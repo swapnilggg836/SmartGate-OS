@@ -1,0 +1,262 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique @db.VarChar(191)
+  passwordHash String     @db.VarChar(255)
+  role         String     @db.VarChar(50) // SUPER_ADMIN, HR, MANAGER, EMPLOYEE, SECURITY_GUARD
+  isActive     Boolean    @default(true)
+  refreshToken String?    @db.Text
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  employee      Employee?
+  approvals     Approval[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  gateLogs      GateLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Department {
+  id          String     @id @default(cuid())
+  name        String     @unique @db.VarChar(191)
+  code        String     @unique @db.VarChar(50)
+  managerId   String?    @db.VarChar(191)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  employees   Employee[]
+}
+
+model Employee {
+  id           String          @id @default(cuid())
+  userId       String          @unique @db.VarChar(191)
+  employeeCode String          @unique @db.VarChar(50)
+  firstName    String          @db.VarChar(100)
+  lastName     String          @db.VarChar(100)
+  departmentId String          @db.VarChar(191)
+  designation  String          @db.VarChar(100)
+  phone        String          @db.VarChar(50)
+  avatarUrl    String?         @db.Text
+  joiningDate  DateTime        @default(now())
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department      @relation(fields: [departmentId], references: [id])
+  leaveBalances LeaveBalance[]
+  leaveRequests LeaveRequest[]
+  exitRequests  ExitRequest[]
+  gatePasses    GatePass[]
+  gateLogs      GateLog[]
+  attendance    Attendance[]
+
+  @@index([employeeCode])
+  @@index([departmentId])
+}
+
+model LeaveType {
+  id                 String         @id @default(cuid())
+  name               String         @unique @db.VarChar(100)
+  code               String         @unique @db.VarChar(20)
+  defaultDaysPerYear Int            @default(12)
+  requiresHrApproval Boolean        @default(false)
+  color              String         @default("#3B82F6") @db.VarChar(20)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  leaveBalances      LeaveBalance[]
+  leaveRequests      LeaveRequest[]
+}
+
+model LeaveBalance {
+  id          String     @id @default(cuid())
+  employeeId  String     @db.VarChar(191)
+  leaveTypeId String     @db.VarChar(191)
+  totalDays   Float      @default(12)
+  usedDays    Float      @default(0)
+  pendingDays Float      @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType   LeaveType  @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId])
+  @@index([employeeId])
+}
+
+model LeaveRequest {
+  id          String     @id @default(cuid())
+  employeeId  String     @db.VarChar(191)
+  leaveTypeId String     @db.VarChar(191)
+  fromDate    DateTime
+  toDate      DateTime
+  totalDays   Float
+  reason      String     @db.Text
+  status      String     @default("PENDING_MANAGER") @db.VarChar(50) // PENDING_MANAGER, PENDING_HR, PENDING_SUPER_ADMIN, APPROVED, REJECTED, CANCELLED
+  submitterRole String   @default("EMPLOYEE") @db.VarChar(50) // Role of the person who submitted
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType   LeaveType  @relation(fields: [leaveTypeId], references: [id])
+  approvals   Approval[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model ExitRequest {
+  id                 String     @id @default(cuid())
+  employeeId         String     @db.VarChar(191)
+  exitDate           DateTime
+  exitTime           String     @db.VarChar(20) // "14:00"
+  expectedReturnTime String     @db.VarChar(20) // "17:00"
+  destination        String     @db.VarChar(255)
+  reason             String     @db.Text
+  description        String?    @db.Text
+  requiresHrApproval Boolean    @default(false)
+  isUrgent           Boolean    @default(false) // Urgent exits notify Super Admin directly
+  status             String     @default("PENDING_MANAGER") @db.VarChar(50) // PENDING_MANAGER, PENDING_HR, APPROVED, REJECTED, CANCELLED, EXPIRED
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  employee           Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  approvals          Approval[]
+  gatePass           GatePass?
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model Approval {
+  id            String        @id @default(cuid())
+  requestType   String        @db.VarChar(50) // LEAVE, EXIT
+  requestId     String        @db.VarChar(191)
+  leaveRequestId String?      @db.VarChar(191)
+  exitRequestId  String?      @db.VarChar(191)
+  approverId    String        @db.VarChar(191)
+  approverRole  String        @db.VarChar(50) // MANAGER, HR
+  status        String        @default("PENDING") @db.VarChar(50) // PENDING, APPROVED, REJECTED
+  comments      String?       @db.Text
+  approvedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  approver      User          @relation(fields: [approverId], references: [id])
+  leaveRequest  LeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  exitRequest   ExitRequest?  @relation(fields: [exitRequestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([approverId])
+}
+
+model GatePass {
+  id            String      @id @default(cuid())
+  passNumber    String      @unique @db.VarChar(100) // GP-2026-00125
+  exitRequestId String      @unique @db.VarChar(191)
+  employeeId    String      @db.VarChar(191)
+  qrPayload     String      @db.Text // JSON string for QR code
+  validFrom     DateTime
+  validUntil    DateTime
+  status        String      @default("ACTIVE") @db.VarChar(50) // ACTIVE, USED, EXPIRED, CANCELLED
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  exitRequest   ExitRequest @relation(fields: [exitRequestId], references: [id], onDelete: Cascade)
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  gateLogs      GateLog[]
+
+  @@index([passNumber])
+  @@index([employeeId])
+  @@index([status])
+}
+
+model GateLog {
+  id                 String    @id @default(cuid())
+  gatePassId         String    @db.VarChar(191)
+  employeeId         String    @db.VarChar(191)
+  approvedExitTime   DateTime
+  actualExitTime     DateTime?
+  expectedReturnTime DateTime
+  actualReturnTime   DateTime?
+  exitStatus         String    @default("PENDING") @db.VarChar(50) // PENDING, EXITED
+  returnStatus       String    @default("PENDING") @db.VarChar(50) // PENDING, RETURNED, LATE_RETURN
+  securityUserId     String?   @db.VarChar(191)
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  gatePass           GatePass  @relation(fields: [gatePassId], references: [id], onDelete: Cascade)
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  securityUser       User?     @relation(fields: [securityUserId], references: [id])
+
+  @@index([gatePassId])
+  @@index([employeeId])
+  @@index([exitStatus])
+  @@index([returnStatus])
+}
+
+model Attendance {
+  id           String    @id @default(cuid())
+  employeeId   String    @db.VarChar(191)
+  date         DateTime
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  status       String    @default("PRESENT") @db.VarChar(50) // PRESENT, ABSENT, ON_LEAVE, ON_EXIT_PERMISSION, HALF_DAY
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   @db.VarChar(191)
+  title     String   @db.VarChar(255)
+  message   String   @db.Text
+  type      String   @default("INFO") @db.VarChar(50)
+  read      Boolean  @default(false)
+  metadata  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?  @db.VarChar(191)
+  userEmail  String?  @db.VarChar(191)
+  action     String   @db.VarChar(100)
+  entity     String   @db.VarChar(100)
+  entityId   String   @db.VarChar(191)
+  oldValues  String?  @db.Text
+  newValues  String?  @db.Text
+  ipAddress  String?  @db.VarChar(100)
+  userAgent  String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
