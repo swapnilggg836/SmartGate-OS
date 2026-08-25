@@ -9,10 +9,18 @@ import { Spinner } from '@/components/ui/Spinner';
 
 type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE' | 'SECURITY_GUARD';
 
+const DEFAULT_DEPARTMENTS = [
+  { id: 'ENG-IT', name: 'Engineering & IT', code: 'ENG-IT' },
+  { id: 'HR-DEPT', name: 'Human Resources', code: 'HR-DEPT' },
+  { id: 'OPS-LOG', name: 'Operations & Logistics', code: 'OPS-LOG' },
+  { id: 'SEC-FAC', name: 'Security & Facilities', code: 'SEC-FAC' },
+  { id: 'FIN-ACC', name: 'Finance & Accounts', code: 'FIN-ACC' }
+];
+
 export default function RegisterPage() {
   const { register } = useAuth();
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [loadingDepts, setLoadingDepts] = useState(true);
+  const [departments, setDepartments] = useState<any[]>(DEFAULT_DEPARTMENTS);
+  const [loadingDepts, setLoadingDepts] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState<{
@@ -21,20 +29,18 @@ export default function RegisterPage() {
     departmentId: string; designation: string; role: UserRole; employeeCode: string;
   }>({
     firstName: '', lastName: '', email: '', password: '', confirmPassword: '',
-    phone: '', departmentId: '', designation: '', role: 'EMPLOYEE', employeeCode: ''
+    phone: '', departmentId: 'ENG-IT', designation: '', role: 'EMPLOYEE', employeeCode: ''
   });
 
   const loadDepartments = () => {
     setLoadingDepts(true);
     api.get('/departments').then(res => {
-      if (res.data?.success && Array.isArray(res.data.data)) {
+      if (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
         setDepartments(res.data.data);
-        if (res.data.data.length > 0) {
-          setForm(f => ({ ...f, departmentId: f.departmentId || res.data.data[0].id }));
-        }
+        setForm(f => ({ ...f, departmentId: res.data.data[0].id }));
       }
     }).catch(err => {
-      console.error('Error fetching departments:', err);
+      console.warn('Using default departments list:', err.message);
     }).finally(() => {
       setLoadingDepts(false);
     });

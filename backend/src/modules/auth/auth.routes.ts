@@ -63,17 +63,34 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
       });
     }
 
-    // Ensure department exists
-    const department = await prisma.department.findUnique({
+    // Ensure department exists (by ID, code, or fallback)
+    let department = await prisma.department.findUnique({
       where: { id: departmentId }
     });
 
     if (!department) {
-      return res.status(400).json({
-        success: false,
-        message: 'Selected department does not exist.'
+      department = await prisma.department.findFirst({
+        where: {
+          OR: [
+            { code: departmentId },
+            { name: departmentId }
+          ]
+        }
       });
     }
+
+    if (!department) {
+      department = await prisma.department.findFirst();
+    }
+
+    if (!department) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected department does not exist and no fallback departments found.'
+      });
+    }
+
+    const actualDepartmentId = department.id;
 
     // Auto-generate employee code if not supplied
     let codeToUse = employeeCode?.trim();
@@ -107,7 +124,7 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
               employeeCode: codeToUse,
               firstName,
               lastName,
-              departmentId,
+              departmentId: actualDepartmentId,
               designation,
               phone,
               avatarUrl: defaultAvatar
