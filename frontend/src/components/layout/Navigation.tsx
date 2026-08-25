@@ -21,27 +21,32 @@ interface NavItem {
 
 function useNavItems(role: string, pendingCount: number, unread: number): NavItem[] {
   const items: NavItem[] = [
-    { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'SECURITY_GUARD'] },
-    // Requests & Passes (Any staff with employee record can apply)
-    { label: 'My Requests', href: '/requests', icon: <FileText size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR'] },
-    { label: 'My Gate Pass', href: '/gate-passes', icon: <QrCode size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR'] },
-    // Approvals (Manager, HR, Super Admin)
-    { label: 'Approvals', href: '/approvals', icon: <ClipboardList size={16} />, badge: pendingCount || undefined, roles: ['MANAGER', 'HR', 'SUPER_ADMIN'] },
+    { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'GM', 'EMPLOYEE', 'SECURITY_GUARD'] },
+    // Personal requests & passes
+    { label: 'My Requests', href: '/requests', icon: <FileText size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM'] },
+    { label: 'My Gate Pass', href: '/gate-passes', icon: <QrCode size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM'] },
+    // Authority connections
+    { label: 'My Authorities', href: '/authority', icon: <UserCheck size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM'] },
+    // Approvals (Manager, HR, GM, Super Admin)
+    { label: 'Approvals', href: '/approvals', icon: <ClipboardList size={16} />, badge: pendingCount || undefined, roles: ['MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
+    // My Team (Manager/HR)
+    { label: 'My Team', href: '/authority/my-team', icon: <Users size={16} />, roles: ['MANAGER', 'HR', 'GM'] },
     // Security Guard & Super Admin
     { label: 'Gate Security', href: '/security', icon: <Shield size={16} />, roles: ['SECURITY_GUARD', 'SUPER_ADMIN'] },
-    // Attendance (Everyone views attendance relevant to their role)
-    { label: 'Attendance', href: '/attendance', icon: <Calendar size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'SUPER_ADMIN'] },
-    // Directory (HR, Admin, Manager)
+    // Attendance
+    { label: 'Attendance', href: '/attendance', icon: <Calendar size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
+    // Employees (HR, Admin, Manager)
     { label: 'Employees', href: '/employees', icon: <Users size={16} />, roles: ['HR', 'SUPER_ADMIN', 'MANAGER'] },
-    // System Config (HR & Admin)
+    // Admin config
     { label: 'Leave Types', href: '/admin/leave-types', icon: <BookOpen size={16} />, roles: ['HR', 'SUPER_ADMIN'] },
-    // Admin only
     { label: 'Departments', href: '/admin/departments', icon: <Settings size={16} />, roles: ['SUPER_ADMIN'] },
     { label: 'Users', href: '/admin/users', icon: <UserCheck size={16} />, roles: ['SUPER_ADMIN'] },
+    { label: 'Company Report', href: '/admin/company', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN', 'GM'] },
+    { label: 'Reports', href: '/admin/reports', icon: <BookOpen size={16} />, roles: ['SUPER_ADMIN', 'HR'] },
     { label: 'Audit Logs', href: '/admin/audit', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN'] },
     // Common
-    { label: 'Notifications', href: '/notifications', icon: <Bell size={16} />, badge: unread || undefined, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'SECURITY_GUARD'] },
-    { label: 'Profile', href: '/profile', icon: <User size={16} />, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'SECURITY_GUARD'] },
+    { label: 'Notifications', href: '/notifications', icon: <Bell size={16} />, badge: unread || undefined, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'GM', 'EMPLOYEE', 'SECURITY_GUARD'] },
+    { label: 'Profile', href: '/profile', icon: <User size={16} />, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'GM', 'EMPLOYEE', 'SECURITY_GUARD'] },
   ];
   return items.filter(item => item.roles.includes(role));
 }
@@ -62,6 +67,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     SUPER_ADMIN: 'Super Admin',
     HR: 'HR Director',
     MANAGER: 'Manager',
+    GM: 'General Manager',
     EMPLOYEE: 'Employee',
     SECURITY_GUARD: 'Security Guard'
   };
@@ -218,15 +224,24 @@ export function MobileNav() {
       { href: '/notifications', icon: <Bell size={20} />, label: 'Alerts', badge: unreadCount },
       { href: '/profile', icon: <User size={20} />, label: 'Profile' },
     ];
+    if (role === 'GM') return [
+      { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Home' },
+      { href: '/approvals', icon: <ClipboardList size={20} />, label: 'Escalated' },
+      { href: '/admin/company', icon: <Users size={20} />, label: 'Overview' },
+      { href: '/notifications', icon: <Bell size={20} />, label: 'Alerts', badge: unreadCount },
+      { href: '/profile', icon: <User size={20} />, label: 'Profile' },
+    ];
     if (role === 'MANAGER' || role === 'HR') return [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Home' },
       { href: '/approvals', icon: <ClipboardList size={20} />, label: 'Approvals' },
+      { href: '/authority/my-team', icon: <Users size={20} />, label: 'My Team' },
       { href: '/notifications', icon: <Bell size={20} />, label: 'Alerts', badge: unreadCount },
       { href: '/profile', icon: <User size={20} />, label: 'Profile' },
     ];
     if (role === 'SUPER_ADMIN') return [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Home' },
       { href: '/employees', icon: <Users size={20} />, label: 'Employees' },
+      { href: '/admin/company', icon: <ClipboardList size={20} />, label: 'Summary' },
       { href: '/notifications', icon: <Bell size={20} />, label: 'Alerts', badge: unreadCount },
       { href: '/profile', icon: <User size={20} />, label: 'Profile' },
     ];
@@ -234,9 +249,9 @@ export function MobileNav() {
     return [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Home' },
       { href: '/requests', icon: <FileText size={20} />, label: 'Requests' },
+      { href: '/authority', icon: <UserCheck size={20} />, label: 'Authority' },
       { href: '/gate-passes', icon: <QrCode size={20} />, label: 'Pass' },
       { href: '/notifications', icon: <Bell size={20} />, label: 'Alerts', badge: unreadCount },
-      { href: '/profile', icon: <User size={20} />, label: 'Profile' },
     ];
   };
 

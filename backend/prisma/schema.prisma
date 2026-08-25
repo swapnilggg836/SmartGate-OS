@@ -11,20 +11,43 @@ model User {
   id           String     @id @default(cuid())
   email        String     @unique @db.VarChar(191)
   passwordHash String     @db.VarChar(255)
-  role         String     @db.VarChar(50) // SUPER_ADMIN, HR, MANAGER, EMPLOYEE, SECURITY_GUARD
+  role         String     @db.VarChar(50) // Primary role: SUPER_ADMIN, GM, HR, MANAGER, EMPLOYEE, SECURITY_GUARD
   isActive     Boolean    @default(true)
   refreshToken String?    @db.Text
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  employee      Employee?
-  approvals     Approval[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
-  gateLogs      GateLog[]
+  employee         Employee?
+  userRoles        UserRole[]
+  approvals        Approval[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  gateLogs         GateLog[]
+  // Authority connections where this user IS the authority
+  authorityOver    AuthorityConnection[] @relation("AuthorityUser")
+  // Authority connections where this user is the junior
+  myAuthorities    AuthorityConnection[] @relation("JuniorUser")
+  // Delegations created by this user (as delegator)
+  delegationsFrom  TemporaryDelegation[] @relation("DelegationFrom")
+  // Delegations assigned to this user (as delegate)
+  delegationsTo    TemporaryDelegation[] @relation("DelegationTo")
 
   @@index([email])
   @@index([role])
+}
+
+// Multi-role junction table
+model UserRole {
+  id         String   @id @default(cuid())
+  userId     String   @db.VarChar(191)
+  role       String   @db.VarChar(50)
+  assignedAt DateTime @default(now())
+  assignedBy String?  @db.VarChar(191)
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([userId])
 }
 
 model Department {
@@ -32,6 +55,7 @@ model Department {
   name        String     @unique @db.VarChar(191)
   code        String     @unique @db.VarChar(50)
   managerId   String?    @db.VarChar(191)
+  description String?    @db.Text
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -39,30 +63,99 @@ model Department {
 }
 
 model Employee {
-  id           String          @id @default(cuid())
-  userId       String          @unique @db.VarChar(191)
-  employeeCode String          @unique @db.VarChar(50)
-  firstName    String          @db.VarChar(100)
-  lastName     String          @db.VarChar(100)
-  departmentId String          @db.VarChar(191)
-  designation  String          @db.VarChar(100)
-  phone        String          @db.VarChar(50)
-  avatarUrl    String?         @db.Text
-  joiningDate  DateTime        @default(now())
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  userId         String          @unique @db.VarChar(191)
+  employeeCode   String          @unique @db.VarChar(50)
+  firstName      String          @db.VarChar(100)
+  lastName       String          @db.VarChar(100)
+  departmentId   String          @db.VarChar(191)
+  designation    String          @db.VarChar(100)
+  phone          String          @db.VarChar(50)
+  avatarUrl      String?         @db.Text
+  joiningDate    DateTime        @default(now())
+  // Denormalized fast-lookup authority IDs (populated when connection is ACTIVE)
+  managerId      String?         @db.VarChar(191) // userId of connected manager
+  hrAuthorityId  String?         @db.VarChar(191) // userId of connected HR
+  gmAuthorityId  String?         @db.VarChar(191) // userId of connected GM
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  department   Department      @relation(fields: [departmentId], references: [id])
-  leaveBalances LeaveBalance[]
-  leaveRequests LeaveRequest[]
-  exitRequests  ExitRequest[]
-  gatePasses    GatePass[]
-  gateLogs      GateLog[]
-  attendance    Attendance[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department     Department      @relation(fields: [departmentId], references: [id])
+  leaveBalances  LeaveBalance[]
+  leaveRequests  LeaveRequest[]
+  exitRequests   ExitRequest[]
+  gatePasses     GatePass[]
+  gateLogs       GateLog[]
+  attendance     Attendance[]
+  statusHistory  EmployeeStatusHistory[]
 
   @@index([employeeCode])
   @@index([departmentId])
+  @@index([managerId])
+  @@index([hrAuthorityId])
+}
+
+// Dynamic authority connection engine
+model AuthorityConnection {
+  id               String   @id @default(cuid())
+  userId           String   @db.VarChar(191) // The junior
+  authorityUserId  String   @db.VarChar(191) // The authority above
+  connectionType   String   @db.VarChar(50)  // REPORTING_MANAGER, HR_AUTHORITY, GM_AUTHORITY, HIGHER_AUTHORITY
+  status           String   @default("PENDING") @db.VarChar(50) // PENDING, ACTIVE, REJECTED, INACTIVE, NEEDS_REASSIGNMENT
+  startDate        DateTime?
+  endDate          DateTime?
+  isTemporary      Boolean  @default(false)
+  reason           String?  @db.Text
+  rejectionReason  String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation("JuniorUser", fields: [userId], references: [id], onDelete: Cascade)
+  authorityUser    User     @relation("AuthorityUser", fields: [authorityUserId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([authorityUserId])
+  @@index([status])
+  @@index([connectionType])
+}
+
+// Temporary delegation (when manager is on leave)
+model TemporaryDelegation {
+  id             String   @id @default(cuid())
+  fromUserId     String   @db.VarChar(191) // Original authority going away
+  toUserId       String   @db.VarChar(191) // Temporary replacement
+  connectionType String   @db.VarChar(50)  // REPORTING_MANAGER, HR_AUTHORITY, etc.
+  startDate      DateTime
+  endDate        DateTime
+  reason         String?  @db.Text
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fromUser       User     @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser         User     @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([isActive])
+}
+
+// Track role/department/status changes over time
+model EmployeeStatusHistory {
+  id          String   @id @default(cuid())
+  employeeId  String   @db.VarChar(191)
+  changeType  String   @db.VarChar(50) // ROLE_CHANGE, DEPT_CHANGE, STATUS_CHANGE, JOINING, EXIT
+  oldValue    String?  @db.Text
+  newValue    String?  @db.Text
+  changedBy   String?  @db.VarChar(191) // userId of admin/HR who made the change
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([changeType])
 }
 
 model LeaveType {
@@ -71,6 +164,7 @@ model LeaveType {
   code               String         @unique @db.VarChar(20)
   defaultDaysPerYear Int            @default(12)
   requiresHrApproval Boolean        @default(false)
+  requiresGmApproval Boolean        @default(false)
   color              String         @default("#3B82F6") @db.VarChar(20)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
@@ -97,17 +191,22 @@ model LeaveBalance {
 }
 
 model LeaveRequest {
-  id          String     @id @default(cuid())
-  employeeId  String     @db.VarChar(191)
-  leaveTypeId String     @db.VarChar(191)
-  fromDate    DateTime
-  toDate      DateTime
-  totalDays   Float
-  reason      String     @db.Text
-  status      String     @default("PENDING_MANAGER") @db.VarChar(50) // PENDING_MANAGER, PENDING_HR, PENDING_SUPER_ADMIN, APPROVED, REJECTED, CANCELLED
-  submitterRole String   @default("EMPLOYEE") @db.VarChar(50) // Role of the person who submitted
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id              String     @id @default(cuid())
+  employeeId      String     @db.VarChar(191)
+  leaveTypeId     String     @db.VarChar(191)
+  fromDate        DateTime
+  toDate          DateTime
+  totalDays       Float
+  reason          String     @db.Text
+  status          String     @default("PENDING_MANAGER") @db.VarChar(50)
+  submitterRole   String     @default("EMPLOYEE") @db.VarChar(50)
+  sendBackReason  String?    @db.Text
+  isCritical      Boolean    @default(false)
+  escalatedToGM   Boolean    @default(false)
+  escalatedAt     DateTime?
+  lastReminderAt  DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   leaveType   LeaveType  @relation(fields: [leaveTypeId], references: [id])
@@ -121,14 +220,20 @@ model ExitRequest {
   id                 String     @id @default(cuid())
   employeeId         String     @db.VarChar(191)
   exitDate           DateTime
-  exitTime           String     @db.VarChar(20) // "14:00"
-  expectedReturnTime String     @db.VarChar(20) // "17:00"
+  exitTime           String     @db.VarChar(20)
+  expectedReturnTime String     @db.VarChar(20)
   destination        String     @db.VarChar(255)
   reason             String     @db.Text
   description        String?    @db.Text
   requiresHrApproval Boolean    @default(false)
-  isUrgent           Boolean    @default(false) // Urgent exits notify Super Admin directly
-  status             String     @default("PENDING_MANAGER") @db.VarChar(50) // PENDING_MANAGER, PENDING_HR, APPROVED, REJECTED, CANCELLED, EXPIRED
+  requiresGmApproval Boolean    @default(false)
+  isUrgent           Boolean    @default(false)
+  isCritical         Boolean    @default(false)
+  escalatedToGM      Boolean    @default(false)
+  escalatedAt        DateTime?
+  lastReminderAt     DateTime?
+  sendBackReason     String?    @db.Text
+  status             String     @default("PENDING_MANAGER") @db.VarChar(50)
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -141,33 +246,35 @@ model ExitRequest {
 }
 
 model Approval {
-  id            String        @id @default(cuid())
-  requestType   String        @db.VarChar(50) // LEAVE, EXIT
-  requestId     String        @db.VarChar(191)
-  leaveRequestId String?      @db.VarChar(191)
-  exitRequestId  String?      @db.VarChar(191)
-  approverId    String        @db.VarChar(191)
-  approverRole  String        @db.VarChar(50) // MANAGER, HR
-  status        String        @default("PENDING") @db.VarChar(50) // PENDING, APPROVED, REJECTED
-  comments      String?       @db.Text
-  approvedAt    DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  requestType    String        @db.VarChar(50) // LEAVE, EXIT
+  requestId      String        @db.VarChar(191)
+  leaveRequestId String?       @db.VarChar(191)
+  exitRequestId  String?       @db.VarChar(191)
+  approverId     String        @db.VarChar(191)
+  approverRole   String        @db.VarChar(50) // MANAGER, HR, GM, SUPER_ADMIN
+  action         String?       @db.VarChar(50) // APPROVE, REJECT, SEND_BACK, ESCALATE
+  status         String        @default("PENDING") @db.VarChar(50) // PENDING, APPROVED, REJECTED, SENT_BACK
+  comments       String?       @db.Text
+  approvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  approver      User          @relation(fields: [approverId], references: [id])
-  leaveRequest  LeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
-  exitRequest   ExitRequest?  @relation(fields: [exitRequestId], references: [id], onDelete: Cascade)
+  approver       User          @relation(fields: [approverId], references: [id])
+  leaveRequest   LeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  exitRequest    ExitRequest?  @relation(fields: [exitRequestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([approverId])
+  @@index([status])
 }
 
 model GatePass {
   id            String      @id @default(cuid())
-  passNumber    String      @unique @db.VarChar(100) // GP-2026-00125
+  passNumber    String      @unique @db.VarChar(100)
   exitRequestId String      @unique @db.VarChar(191)
   employeeId    String      @db.VarChar(191)
-  qrPayload     String      @db.Text // JSON string for QR code
+  qrPayload     String      @db.Text
   validFrom     DateTime
   validUntil    DateTime
   status        String      @default("ACTIVE") @db.VarChar(50) // ACTIVE, USED, EXPIRED, CANCELLED
@@ -192,7 +299,10 @@ model GateLog {
   expectedReturnTime DateTime
   actualReturnTime   DateTime?
   exitStatus         String    @default("PENDING") @db.VarChar(50) // PENDING, EXITED
-  returnStatus       String    @default("PENDING") @db.VarChar(50) // PENDING, RETURNED, LATE_RETURN
+  returnStatus       String    @default("PENDING") @db.VarChar(50) // PENDING, RETURNED, LATE_RETURN, OVERDUE, CRITICAL
+  lateMinutes        Int?      // calculated late duration in minutes
+  lateAlertSent      Boolean   @default(false)
+  criticalAlertSent  Boolean   @default(false)
   securityUserId     String?   @db.VarChar(191)
   notes              String?   @db.Text
   createdAt          DateTime  @default(now())
@@ -214,7 +324,7 @@ model Attendance {
   date         DateTime
   checkInTime  DateTime?
   checkOutTime DateTime?
-  status       String    @default("PRESENT") @db.VarChar(50) // PRESENT, ABSENT, ON_LEAVE, ON_EXIT_PERMISSION, HALF_DAY
+  status       String    @default("PRESENT") @db.VarChar(50)
   notes        String?   @db.Text
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -231,6 +341,7 @@ model Notification {
   title     String   @db.VarChar(255)
   message   String   @db.Text
   type      String   @default("INFO") @db.VarChar(50)
+  priority  String   @default("NORMAL") @db.VarChar(20) // NORMAL, HIGH, CRITICAL
   read      Boolean  @default(false)
   metadata  String?  @db.Text
   createdAt DateTime @default(now())
@@ -239,6 +350,7 @@ model Notification {
 
   @@index([userId])
   @@index([read])
+  @@index([priority])
 }
 
 model AuditLog {
@@ -248,6 +360,7 @@ model AuditLog {
   action     String   @db.VarChar(100)
   entity     String   @db.VarChar(100)
   entityId   String   @db.VarChar(191)
+  requestId  String?  @db.VarChar(191) // Link to leave/exit request
   oldValues  String?  @db.Text
   newValues  String?  @db.Text
   ipAddress  String?  @db.VarChar(100)
@@ -259,4 +372,5 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([userId])
   @@index([createdAt])
+  @@index([requestId])
 }

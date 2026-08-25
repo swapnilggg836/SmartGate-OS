@@ -7,3 +7,4 @@ export * from './gate-pass';
 export * from './attendance';
 export * from './notification';
 export * from './audit';
+export * from './authority';

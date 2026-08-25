@@ -199,26 +199,207 @@ router.patch('/:id/status', authenticate, requireRoles(UserRole.SUPER_ADMIN), as
       return res.status(400).json({ success: false, message: 'isActive must be a boolean' });
     }
     const user = await prisma.user.update({ where: { id }, data: { isActive } });
+
+    // If deactivating, cascade authority connection status
+    if (!isActive) {
+      const conns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: id, status: 'ACTIVE' }
+      });
+      for (const conn of conns) {
+        await prisma.authorityConnection.update({ where: { id: conn.id }, data: { status: 'NEEDS_REASSIGNMENT' } });
+        await prisma.notification.create({
+          data: {
+            userId: conn.userId,
+            title: 'Authority Reassignment Required',
+            message: `Your ${conn.connectionType.replace('_', ' ')} is no longer active. Please connect a new authority.`,
+            type: 'INFO',
+            priority: 'HIGH'
+          }
+        });
+      }
+    }
+
     return res.json({ success: true, data: { id: user.id, isActive: user.isActive } });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to update user status' });
   }
 });
 
-// PATCH /api/users/:id/role (Admin only — change role)
+// PATCH /api/users/:id/role (Admin only — change primary role)
 router.patch('/:id/role', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
-    const validRoles = Object.values(UserRole);
+    const validRoles = [...Object.values(UserRole), 'GM'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
+    const oldUser = await prisma.user.findUnique({ where: { id }, include: { employee: true } });
     const user = await prisma.user.update({ where: { id }, data: { role } });
+
+    if (oldUser?.employee) {
+      await prisma.employeeStatusHistory.create({
+        data: {
+          employeeId: oldUser.employee.id,
+          changeType: 'ROLE_CHANGE',
+          oldValue: oldUser.role,
+          newValue: role,
+          changedBy: req.user!.userId,
+          notes: 'Primary role changed by admin'
+        }
+      });
+    }
+
     return res.json({ success: true, data: { id: user.id, role: user.role } });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to update user role' });
   }
 });
 
+// POST /api/users/:id/roles — Add additional role (multi-role)
+router.post('/:id/roles', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+    const validRoles = [...Object.values(UserRole), 'GM'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role' });
+    }
+    const userRole = await prisma.userRole.upsert({
+      where: { userId_role: { userId: id, role } },
+      update: {},
+      create: { userId: id, role, assignedBy: req.user!.userId }
+    });
+    return res.status(201).json({ success: true, data: userRole });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to add role' });
+  }
+});
+
+// DELETE /api/users/:id/roles/:role — Remove additional role
+router.delete('/:id/roles/:role', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id, role } = req.params;
+    await prisma.userRole.deleteMany({ where: { userId: id, role } });
+    return res.json({ success: true, message: 'Role removed' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to remove role' });
+  }
+});
+
+// GET /api/users/:id/roles — All roles for a user
+router.get('/:id/roles', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const [user, roles] = await Promise.all([
+      prisma.user.findUnique({ where: { id }, select: { role: true } }),
+      prisma.userRole.findMany({ where: { userId: id } })
+    ]);
+    const allRoles = Array.from(new Set([user?.role, ...roles.map(r => r.role)])).filter(Boolean);
+    return res.json({ success: true, data: { primaryRole: user?.role, additionalRoles: roles, allRoles } });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch roles' });
+  }
+});
+
+// GET /api/users/:id/journey — Full employee journey (Admin only)
+router.get('/:id/journey', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({ where: { id }, include: { employee: true } });
+    if (!user?.employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+    const employeeId = user.employee.id;
+
+    const [statusHistory, leaveRequests, exitRequests, gatePassHistory, attendanceRecords, authorityConnections, auditLogs] = await Promise.all([
+      prisma.employeeStatusHistory.findMany({ where: { employeeId }, orderBy: { createdAt: 'desc' } }),
+      prisma.leaveRequest.findMany({
+        where: { employeeId },
+        include: { leaveType: true, approvals: { include: { approver: { include: { employee: true } } } } },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.exitRequest.findMany({
+        where: { employeeId },
+        include: { approvals: { include: { approver: { include: { employee: true } } } }, gatePass: { include: { gateLogs: true } } },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.gatePass.findMany({ where: { employeeId }, include: { gateLogs: true }, orderBy: { createdAt: 'desc' } }),
+      prisma.attendance.findMany({ where: { employeeId }, orderBy: { date: 'desc' }, take: 90 }),
+      prisma.authorityConnection.findMany({
+        where: { userId: id },
+        include: { authorityUser: { include: { employee: true } } },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.auditLog.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 100 })
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        employee: user.employee,
+        user: { id: user.id, email: user.email, role: user.role, isActive: user.isActive, createdAt: user.createdAt },
+        statusHistory, leaveRequests, exitRequests, gatePassHistory, attendanceRecords, authorityConnections, auditLogs
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch employee journey' });
+  }
+});
+
+// GET /api/users/company/summary — Company-wide KPIs (Admin only)
+router.get('/company/summary', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const [totalEmployees, activeEmployees, inactiveUsers, totalManagers, totalHR, totalSecurity, presentToday, onLeaveToday, currentlyOutside, pendingLeave, pendingExit, lateReturns, criticalCases, departments] = await Promise.all([
+      prisma.employee.count(),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.count({ where: { isActive: false } }),
+      prisma.user.count({ where: { role: 'MANAGER', isActive: true } }),
+      prisma.user.count({ where: { role: 'HR', isActive: true } }),
+      prisma.user.count({ where: { role: 'SECURITY_GUARD', isActive: true } }),
+      prisma.attendance.count({ where: { date: { gte: today, lt: tomorrow }, status: 'PRESENT' } }),
+      prisma.attendance.count({ where: { date: { gte: today, lt: tomorrow }, status: 'ON_LEAVE' } }),
+      prisma.gateLog.count({ where: { exitStatus: 'EXITED', returnStatus: 'PENDING' } }),
+      prisma.leaveRequest.count({ where: { status: { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM', 'PENDING_SUPER_ADMIN'] } } }),
+      prisma.exitRequest.count({ where: { status: { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM'] } } }),
+      prisma.gateLog.count({ where: { returnStatus: { in: ['LATE_RETURN', 'OVERDUE', 'CRITICAL'] } } }),
+      prisma.leaveRequest.count({ where: { isCritical: true, status: { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM'] } } }),
+      prisma.department.findMany({
+        include: {
+          employees: {
+            select: {
+              id: true,
+              attendance: { where: { date: { gte: today, lt: tomorrow } }, select: { status: true } },
+              gateLogs: { where: { exitStatus: 'EXITED', returnStatus: 'PENDING' }, select: { id: true, returnStatus: true } }
+            }
+          }
+        }
+      })
+    ]);
+
+    const departmentSummary = departments.map(dept => {
+      const total = dept.employees.length;
+      const present = dept.employees.filter(e => e.attendance.some(a => a.status === 'PRESENT')).length;
+      const onLeave = dept.employees.filter(e => e.attendance.some(a => a.status === 'ON_LEAVE')).length;
+      const outside = dept.employees.reduce((s, e) => s + e.gateLogs.length, 0);
+      const late = dept.employees.reduce((s, e) => s + e.gateLogs.filter(g => ['LATE_RETURN', 'OVERDUE', 'CRITICAL'].includes(g.returnStatus)).length, 0);
+      return { id: dept.id, name: dept.name, code: dept.code, total, present, absent: total - present - onLeave, onLeave, outside, late };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        overview: { totalEmployees, activeEmployees, inactiveUsers, totalManagers, totalHR, totalSecurity, presentToday, onLeaveToday, absentToday: activeEmployees - presentToday - onLeaveToday, currentlyOutside, pendingLeave, pendingExit, lateReturns, criticalCases },
+        departmentSummary
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch company summary' });
+  }
+});
+
 export default router;
+

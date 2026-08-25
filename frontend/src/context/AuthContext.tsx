@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useRouter, usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
 
-export type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE' | 'SECURITY_GUARD';
+export type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'GM' | 'EMPLOYEE' | 'SECURITY_GUARD';
 
 export interface UserEmployee {
   id: string;
@@ -17,12 +17,16 @@ export interface UserEmployee {
   phone: string;
   avatarUrl?: string;
   leaveBalances?: any[];
+  managerId?: string | null;
+  hrAuthorityId?: string | null;
+  gmAuthorityId?: string | null;
 }
 
 export interface AuthUser {
   id: string;
   email: string;
   role: UserRole;
+  roles?: string[]; // all roles including additional
   employee?: UserEmployee | null;
 }
 
@@ -33,6 +37,13 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  hasRole: (role: UserRole | string) => boolean;
+  isAdmin: boolean;
+  isManager: boolean;
+  isHR: boolean;
+  isGM: boolean;
+  isEmployee: boolean;
+  isSecurity: boolean;
 }
 
 export interface RegisterData {
@@ -66,7 +77,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.get('/auth/me');
       if (res.data?.success) {
-        setUser(res.data.data);
+        const userData = res.data.data;
+        // Fetch additional roles if any
+        try {
+          const rolesRes = await api.get(`/users/${userData.id}/roles`);
+          if (rolesRes.data?.success) {
+            userData.roles = rolesRes.data.data.allRoles;
+          }
+        } catch {
+          userData.roles = [userData.role];
+        }
+        setUser(userData);
       }
     } catch {
       localStorage.removeItem('access_token');
@@ -99,6 +120,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { tokens, user: profile } = res.data.data;
         localStorage.setItem('access_token', tokens.accessToken);
         localStorage.setItem('refresh_token', tokens.refreshToken);
+        // Fetch roles too
+        try {
+          const rolesRes = await api.get(`/users/${profile.id}/roles`, {
+            headers: { Authorization: `Bearer ${tokens.accessToken}` }
+          });
+          if (rolesRes.data?.success) profile.roles = rolesRes.data.data.allRoles;
+        } catch { profile.roles = [profile.role]; }
         setUser(profile);
         router.push('/dashboard');
         return { ok: true };
@@ -116,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { tokens, user: profile } = res.data.data;
         localStorage.setItem('access_token', tokens.accessToken);
         localStorage.setItem('refresh_token', tokens.refreshToken);
+        profile.roles = [profile.role];
         setUser(profile);
         router.push('/dashboard');
         return { ok: true };
@@ -134,8 +163,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/login');
   };
 
+  const hasRole = (role: UserRole | string): boolean => {
+    if (!user) return false;
+    if (user.role === role) return true;
+    if (user.roles && user.roles.includes(role)) return true;
+    return false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser: fetchUser }}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      refreshUser: fetchUser,
+      hasRole,
+      isAdmin: hasRole('SUPER_ADMIN'),
+      isManager: hasRole('MANAGER'),
+      isHR: hasRole('HR'),
+      isGM: hasRole('GM'),
+      isEmployee: hasRole('EMPLOYEE'),
+      isSecurity: hasRole('SECURITY_GUARD'),
+    }}>
       {children}
     </AuthContext.Provider>
   );

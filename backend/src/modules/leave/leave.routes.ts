@@ -20,8 +20,8 @@ const createLeaveSchema = z.object({
 });
 
 const reviewLeaveSchema = z.object({
-  action: z.enum(['APPROVE', 'REJECT']).optional(),
-  status: z.enum(['APPROVED', 'REJECTED']).optional(),
+  action: z.enum(['APPROVE', 'REJECT', 'SEND_BACK']).optional(),
+  status: z.enum(['APPROVED', 'REJECTED', 'SENT_BACK']).optional(),
   comments: z.string().optional()
 }).refine(d => d.action || d.status, { message: 'action or status required' });
 
@@ -176,35 +176,73 @@ router.get('/requests', authenticate, async (req: AuthenticatedRequest, res: Res
   }
 });
 
-// GET /api/leave/requests/pending (Manager sees employee leaves pending their approval)
-router.get('/requests/pending', authenticate, requireRoles(UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/leave/requests/pending (Manager / HR / GM / Super Admin)
+// Returns only requests where the current user IS the connected authority
+router.get('/requests/pending', authenticate, requireRoles(UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.GM as any), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const role = req.user!.role;
-    const userEmployeeId = req.user!.employeeId;
+    const userId = req.user!.userId;
     let where: any = {};
 
-    if (role === UserRole.MANAGER) {
-      // Manager sees PENDING_MANAGER requests from their department employees only
-      where.status = 'PENDING_MANAGER';
-      if (userEmployeeId) {
-        const managerEmp = await prisma.employee.findUnique({ where: { id: userEmployeeId } });
-        if (managerEmp) where.employee = { departmentId: managerEmp.departmentId };
-      }
+    if (role === UserRole.SUPER_ADMIN) {
+      // Admin sees everything pending
+      where.status = { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM', 'PENDING_SUPER_ADMIN'] };
+    } else if (role === 'GM') {
+      // GM sees escalated, critical, and requests where they are the GM authority
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'GM_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.OR = [
+        { status: 'PENDING_GM', employeeId: { in: juniorEmployees.map(e => e.id) } },
+        { escalatedToGM: true, status: { in: ['PENDING_GM', 'PENDING_MANAGER', 'PENDING_HR'] } }
+      ];
     } else if (role === UserRole.HR) {
-      // HR sees PENDING_HR + PENDING_SUPER_ADMIN (from managers who applied leave)
+      // HR sees PENDING_HR requests from employees connected to them
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
       where.status = { in: ['PENDING_HR', 'PENDING_SUPER_ADMIN'] };
-    } else {
-      // Super Admin sees everything pending
-      where.status = { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_SUPER_ADMIN'] };
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
+    } else if (role === UserRole.MANAGER) {
+      // Manager sees PENDING_MANAGER requests from employees connected to them
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.status = 'PENDING_MANAGER';
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
     }
 
     const requests = await prisma.leaveRequest.findMany({
       where,
-      include: { employee: { include: { department: true } }, leaveType: true, approvals: { include: { approver: { include: { employee: true } } } } },
+      include: {
+        employee: { include: { department: true } },
+        leaveType: true,
+        approvals: { include: { approver: { include: { employee: true } } } }
+      },
       orderBy: { createdAt: 'desc' }
     });
     return res.json({ success: true, data: requests });
-  } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch pending leave requests' }); }
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch pending leave requests' });
+  }
 });
 
 // GET /api/leave/requests/pending-hr (HR and Super Admin)
@@ -315,8 +353,7 @@ router.post('/requests', authenticate, validateBody(createLeaveSchema), async (r
 
     const employee = createdRequest.employee;
 
-    // 5. Notifications — role-based escalation
-    // Employee always gets confirmation
+    // 5. Notifications — dynamic authority-based routing
     await prisma.notification.create({
       data: {
         userId: req.user!.userId,
@@ -327,66 +364,65 @@ router.post('/requests', authenticate, validateBody(createLeaveSchema), async (r
       }
     });
 
-    if (submitterRole === UserRole.EMPLOYEE) {
-      // Normal flow: notify managers of this department
-      emitToRole(UserRole.MANAGER, 'leave:new_request', {
-        requestId: createdRequest.id,
-        employeeName: `${employee.firstName} ${employee.lastName}`,
-        department: employee.department?.name,
-        totalDays,
-        leaveType: balance.leaveType.name
+    if (submitterRole === UserRole.EMPLOYEE || submitterRole === UserRole.MANAGER || submitterRole === UserRole.HR) {
+      // Look up connected manager authority for this employee
+      const managerConn = await prisma.authorityConnection.findFirst({
+        where: {
+          userId: req.user!.userId,
+          connectionType: 'REPORTING_MANAGER',
+          status: 'ACTIVE'
+        }
       });
 
-      // Also create in-app notification for Managers
-      const managers = await prisma.user.findMany({ where: { role: 'MANAGER', isActive: true } });
-      await Promise.all(managers.map(mgr =>
-        prisma.notification.create({
+      if (managerConn) {
+        // Check for temporary delegation
+        const now = new Date();
+        const delegation = await prisma.temporaryDelegation.findFirst({
+          where: {
+            fromUserId: managerConn.authorityUserId,
+            connectionType: 'REPORTING_MANAGER',
+            isActive: true,
+            startDate: { lte: now },
+            endDate: { gte: now }
+          }
+        });
+        const effectiveManagerId = delegation ? delegation.toUserId : managerConn.authorityUserId;
+
+        await prisma.notification.create({
           data: {
-            userId: mgr.id,
+            userId: effectiveManagerId,
             title: 'New Leave Request',
-            message: `${employee.firstName} ${employee.lastName} applied for ${balance.leaveType.name} (${totalDays} days). Please review.`,
-            type: 'ACTION_REQUIRED',
-            metadata: JSON.stringify({ requestId: createdRequest.id })
+            message: `${employee.firstName} ${employee.lastName} (${employee.employeeCode}) applied for ${balance.leaveType.name} (${totalDays} days). Please review.`,
+            type: 'APPROVAL_REQUEST',
+            priority: 'NORMAL',
+            metadata: JSON.stringify({ requestId: createdRequest.id, requestType: 'LEAVE' })
           }
-        })
-      ));
-    } else if (submitterRole === UserRole.MANAGER) {
-      // Manager applying leave: notify HR + Super Admin
-      const hrAndAdmins = await prisma.user.findMany({
-        where: { role: { in: ['HR', 'SUPER_ADMIN'] }, isActive: true }
-      });
-      await Promise.all(hrAndAdmins.map(u =>
-        prisma.notification.create({
-          data: {
-            userId: u.id,
-            title: '📋 Manager Leave Request',
-            message: `Manager ${employee.firstName} ${employee.lastName} applied for ${balance.leaveType.name} (${totalDays} days). Needs your approval.`,
-            type: 'ACTION_REQUIRED',
-            metadata: JSON.stringify({ requestId: createdRequest.id })
-          }
-        })
-      ));
-      emitToRole(UserRole.HR, 'leave:manager_request', { requestId: createdRequest.id, employeeName: `${employee.firstName} ${employee.lastName}`, totalDays, leaveType: balance.leaveType.name });
-      emitToRole(UserRole.SUPER_ADMIN, 'leave:manager_request', { requestId: createdRequest.id, employeeName: `${employee.firstName} ${employee.lastName}`, totalDays, leaveType: balance.leaveType.name });
-    } else if (submitterRole === UserRole.HR) {
-      // HR applying leave: notify Super Admin only
-      const superAdmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN', isActive: true } });
-      await Promise.all(superAdmins.map(u =>
-        prisma.notification.create({
-          data: {
-            userId: u.id,
-            title: '📋 HR Leave Request',
-            message: `HR ${employee.firstName} ${employee.lastName} applied for ${balance.leaveType.name} (${totalDays} days). Needs your approval.`,
-            type: 'ACTION_REQUIRED',
-            metadata: JSON.stringify({ requestId: createdRequest.id })
-          }
-        })
-      ));
-      emitToRole(UserRole.SUPER_ADMIN, 'leave:hr_request', { requestId: createdRequest.id, employeeName: `${employee.firstName} ${employee.lastName}`, totalDays, leaveType: balance.leaveType.name });
+        });
+        emitToUser(effectiveManagerId, 'leave:new_request', {
+          requestId: createdRequest.id,
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          totalDays,
+          leaveType: balance.leaveType.name
+        });
+      } else {
+        // No authority connection — fallback: notify all managers in department (backwards compat)
+        const managers = await prisma.user.findMany({ where: { role: 'MANAGER', isActive: true } });
+        await Promise.all(managers.map(mgr =>
+          prisma.notification.create({
+            data: {
+              userId: mgr.id,
+              title: 'New Leave Request (No Authority Assigned)',
+              message: `${employee.firstName} ${employee.lastName} applied for ${balance.leaveType.name} (${totalDays} days). Employee has no connected manager — please review or assign authority.`,
+              type: 'APPROVAL_REQUEST',
+              priority: 'HIGH',
+              metadata: JSON.stringify({ requestId: createdRequest.id, requestType: 'LEAVE' })
+            }
+          })
+        ));
+      }
     }
 
     await logAudit({
-
       userId: req.user!.userId,
       action: 'LEAVE_REQUEST_CREATED',
       entity: 'LeaveRequest',
@@ -402,12 +438,12 @@ router.post('/requests', authenticate, validateBody(createLeaveSchema), async (r
   }
 });
 
-// PATCH /api/leave/requests/:id/review (Manager / HR)
-router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN), validateBody(reviewLeaveSchema), async (req: AuthenticatedRequest, res: Response) => {
+// PATCH /api/leave/requests/:id/review (Manager / HR / GM / Super Admin)
+router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.GM as any), validateBody(reviewLeaveSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { action, status, comments } = req.body;
-    const resolvedAction = action || (status === 'APPROVED' ? 'APPROVE' : status === 'REJECTED' ? 'REJECT' : null);
+    const resolvedAction = action || (status === 'APPROVED' ? 'APPROVE' : status === 'REJECTED' ? 'REJECT' : status === 'SENT_BACK' ? 'SEND_BACK' : null);
     if (!resolvedAction) return res.status(400).json({ success: false, message: 'action or status required' });
     const approverRole = req.user!.role as UserRole;
     const approverUserId = req.user!.userId;
@@ -424,20 +460,30 @@ router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRol
       return res.status(404).json({ success: false, message: 'Leave request not found.' });
     }
 
+    if (resolvedAction === 'SEND_BACK' && (!comments || comments.trim().length === 0)) {
+      return res.status(400).json({ success: false, message: 'Send Back requires a mandatory comment explaining what needs to be corrected.' });
+    }
+
     if (resolvedAction === 'REJECT' && (!comments || comments.trim().length === 0)) {
       return res.status(400).json({ success: false, message: 'Rejection requires a mandatory comment explaining the reason.' });
     }
 
     let nextStatus = request.status;
 
-    if (resolvedAction === 'APPROVE') {
+    if (resolvedAction === 'SEND_BACK') {
+      nextStatus = 'SENT_BACK';
+    } else if (resolvedAction === 'APPROVE') {
       if (approverRole === UserRole.MANAGER) {
         if (request.leaveType.requiresHrApproval) {
           nextStatus = 'PENDING_HR';
+        } else if ((request.leaveType as any).requiresGmApproval) {
+          nextStatus = 'PENDING_GM';
         } else {
           nextStatus = 'APPROVED';
         }
-      } else if (approverRole === UserRole.HR || approverRole === UserRole.SUPER_ADMIN) {
+      } else if (approverRole === UserRole.HR) {
+        nextStatus = 'APPROVED';
+      } else if (approverRole === 'GM' as any || approverRole === UserRole.SUPER_ADMIN) {
         nextStatus = 'APPROVED';
       }
     } else {
@@ -452,17 +498,21 @@ router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRol
           requestId: request.id,
           leaveRequestId: request.id,
           approverId: approverUserId,
-          approverRole: approverRole === UserRole.SUPER_ADMIN ? 'HR' : approverRole,
-          status: resolvedAction === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+          approverRole: approverRole === UserRole.SUPER_ADMIN ? 'SUPER_ADMIN' : approverRole,
+          action: resolvedAction,
+          status: resolvedAction === 'APPROVE' ? 'APPROVED' : resolvedAction === 'REJECT' ? 'REJECTED' : 'SENT_BACK',
           comments: comments || null,
           approvedAt: new Date()
         }
       });
 
-      // Update request status
+      // Update request status + sendBackReason
       await tx.leaveRequest.update({
         where: { id: request.id },
-        data: { status: nextStatus }
+        data: {
+          status: nextStatus,
+          sendBackReason: resolvedAction === 'SEND_BACK' ? (comments || null) : undefined
+        }
       });
 
       // Update LeaveBalance
@@ -484,7 +534,7 @@ router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRol
               usedDays: { increment: request.totalDays }
             }
           });
-        } else if (nextStatus === 'REJECTED') {
+        } else if (nextStatus === 'REJECTED' || nextStatus === 'SENT_BACK') {
           await tx.leaveBalance.update({
             where: { id: balance.id },
             data: {
@@ -496,20 +546,28 @@ router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRol
     });
 
     // Notify Employee
-    const notificationTitle = resolvedAction === 'APPROVE' 
-      ? (nextStatus === 'APPROVED' ? 'Leave Request Approved' : 'Leave Request Approved by Manager')
-      : 'Leave Request Rejected';
+    const notificationTitle = resolvedAction === 'APPROVE'
+      ? (nextStatus === 'APPROVED' ? 'Leave Request Approved ✅' : 'Leave Request Approved by Manager')
+      : resolvedAction === 'SEND_BACK'
+        ? 'Leave Request Sent Back for Correction'
+        : 'Leave Request Rejected';
 
     const notificationMessage = resolvedAction === 'APPROVE'
-      ? (nextStatus === 'APPROVED' ? `Your ${request.leaveType.name} request for ${request.totalDays} days is fully approved.` : `Approved by manager. Awaiting final HR confirmation.`)
-      : `Your leave request was rejected. Reason: ${comments}`;
+      ? (nextStatus === 'APPROVED' ? `Your ${request.leaveType.name} request for ${request.totalDays} days is fully approved.` : `Approved by manager. Awaiting further approval.`)
+      : resolvedAction === 'SEND_BACK'
+        ? `Your leave request was sent back for correction. Reason: ${comments}`
+        : `Your leave request was rejected. Reason: ${comments}`;
+
+    const notifType = resolvedAction === 'APPROVE' ? 'REQUEST_APPROVED' : resolvedAction === 'SEND_BACK' ? 'REQUEST_SENT_BACK' : 'REQUEST_REJECTED';
+    const notifPriority = resolvedAction === 'REJECT' ? 'HIGH' : 'NORMAL';
 
     await prisma.notification.create({
       data: {
         userId: request.employee.userId,
         title: notificationTitle,
         message: notificationMessage,
-        type: resolvedAction === 'APPROVE' ? 'REQUEST_APPROVED' : 'REQUEST_REJECTED',
+        type: notifType,
+        priority: notifPriority,
         metadata: JSON.stringify({ requestId: request.id, status: nextStatus })
       }
     });
@@ -520,12 +578,40 @@ router.patch('/:id/review', authenticate, requireRoles(UserRole.MANAGER, UserRol
       message: notificationMessage
     });
 
+    // If moving to PENDING_HR, notify the employee's specific HR authority
     if (nextStatus === 'PENDING_HR') {
-      emitToRole(UserRole.HR, 'leave:pending_hr', {
-        requestId: request.id,
-        employeeName: `${request.employee.firstName} ${request.employee.lastName}`,
-        totalDays: request.totalDays
+      const hrConn = await prisma.authorityConnection.findFirst({
+        where: {
+          userId: request.employee.userId,
+          connectionType: 'HR_AUTHORITY',
+          status: 'ACTIVE'
+        }
       });
+      const hrTargetId = hrConn?.authorityUserId;
+      if (hrTargetId) {
+        await prisma.notification.create({
+          data: {
+            userId: hrTargetId,
+            title: 'Leave Request Awaiting HR Approval',
+            message: `${request.employee.firstName} ${request.employee.lastName}'s ${request.leaveType.name} leave (${request.totalDays} days) was approved by manager and now needs your approval.`,
+            type: 'APPROVAL_REQUEST',
+            priority: 'NORMAL',
+            metadata: JSON.stringify({ requestId: request.id, requestType: 'LEAVE' })
+          }
+        });
+        emitToUser(hrTargetId, 'leave:pending_hr', {
+          requestId: request.id,
+          employeeName: `${request.employee.firstName} ${request.employee.lastName}`,
+          totalDays: request.totalDays
+        });
+      } else {
+        // Fallback: notify all HR
+        emitToRole(UserRole.HR, 'leave:pending_hr', {
+          requestId: request.id,
+          employeeName: `${request.employee.firstName} ${request.employee.lastName}`,
+          totalDays: request.totalDays
+        });
+      }
     }
 
     await logAudit({
