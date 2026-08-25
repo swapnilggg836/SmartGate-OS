@@ -14,6 +14,9 @@ import attendanceRoutes from './modules/attendance/attendance.routes';
 import notificationRoutes from './modules/notifications/notification.routes';
 import auditRoutes from './modules/audit/audit.routes';
 
+import setupRoutes from './modules/setup/setup.routes';
+import { prisma } from './lib/prisma';
+
 const app = express();
 
 app.use(cors({
@@ -24,16 +27,39 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health Check
-app.get('/api/health', (req, res) => {
+// Health & Diagnostic Check
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'disconnected';
+  let stats: any = null;
+  let error: string | null = null;
+
+  try {
+    const [userCount, deptCount] = await Promise.all([
+      prisma.user.count(),
+      prisma.department.count()
+    ]);
+    dbStatus = 'connected';
+    stats = {
+      users: userCount,
+      departments: deptCount
+    };
+  } catch (err: any) {
+    dbStatus = 'error';
+    error = err.message || 'Database error';
+  }
+
   res.json({
     status: 'online',
+    database: dbStatus,
+    stats,
+    error,
     system: 'Smart Leave, Exit Permission & Gate Pass Management System',
     timestamp: new Date().toISOString()
   });
 });
 
 // API Routes
+app.use('/api/setup', setupRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
@@ -50,3 +76,4 @@ app.use('/api/audit-logs', auditRoutes);
 app.use(errorHandler);
 
 export default app;
+

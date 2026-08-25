@@ -17,8 +17,9 @@
     "build:frontend": "npm run build:types && npm run build --workspace=frontend",
     "start:backend": "npm run start --workspace=backend",
     "start:frontend": "npm run start --workspace=frontend",
-    "db:push": "npx prisma db push --schema=backend/prisma/schema.prisma",
+    "db:push": "npm run prisma:push --workspace=backend",
     "db:seed": "npm run seed --workspace=backend",
+    "db:setup": "npm run db:setup --workspace=backend",
     "seed": "npm run seed --workspace=backend"
   },
   "devDependencies": {
