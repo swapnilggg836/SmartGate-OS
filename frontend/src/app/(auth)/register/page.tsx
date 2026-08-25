@@ -12,6 +12,7 @@ type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE' | 'SECURITY_GUARD'
 export default function RegisterPage() {
   const { register } = useAuth();
   const [departments, setDepartments] = useState<any[]>([]);
+  const [loadingDepts, setLoadingDepts] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState<{
@@ -23,13 +24,24 @@ export default function RegisterPage() {
     phone: '', departmentId: '', designation: '', role: 'EMPLOYEE', employeeCode: ''
   });
 
-  useEffect(() => {
+  const loadDepartments = () => {
+    setLoadingDepts(true);
     api.get('/departments').then(res => {
-      if (res.data?.success) {
+      if (res.data?.success && Array.isArray(res.data.data)) {
         setDepartments(res.data.data);
-        if (res.data.data[0]) setForm(f => ({ ...f, departmentId: res.data.data[0].id }));
+        if (res.data.data.length > 0) {
+          setForm(f => ({ ...f, departmentId: f.departmentId || res.data.data[0].id }));
+        }
       }
-    }).catch(() => {});
+    }).catch(err => {
+      console.error('Error fetching departments:', err);
+    }).finally(() => {
+      setLoadingDepts(false);
+    });
+  };
+
+  useEffect(() => {
+    loadDepartments();
   }, []);
 
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -131,11 +143,21 @@ export default function RegisterPage() {
                 <div className="form-group">
                   <label className="form-label">Department <span className="required">*</span></label>
                   <select className="form-control" value={form.departmentId} onChange={set('departmentId')} required>
-                    <option value="">Select Department</option>
+                    <option value="">{loadingDepts ? '⏳ Loading departments from MySQL...' : departments.length === 0 ? '⚠️ No departments found (Click to refresh)' : 'Select Department'}</option>
                     {departments.map(d => (
                       <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
                     ))}
                   </select>
+                  {departments.length === 0 && !loadingDepts && (
+                    <button
+                      type="button"
+                      onClick={loadDepartments}
+                      className="text-xs text-blue-600 underline mt-1"
+                      style={{ fontSize: '0.75rem', color: 'var(--blue-700)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                    >
+                      ↻ Refresh Departments
+                    </button>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Role <span className="required">*</span></label>
