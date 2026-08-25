@@ -136,6 +136,7 @@ export default function LoginPage() {
               ['employee@enterprise.com', 'Employee'],
               ['manager@enterprise.com', 'Manager'],
               ['hr@enterprise.com', 'HR'],
+              ['gm@enterprise.com', 'General Manager'],
               ['security@enterprise.com', 'Security'],
               ['admin@enterprise.com', 'Super Admin'],
             ].map(([em, role]) => (

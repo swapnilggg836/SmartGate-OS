@@ -310,7 +310,10 @@ router.post('/login', validateBody(loginSchema), async (req: Request, res: Respo
     });
   } catch (err: any) {
     console.error('Login error:', err);
-    return res.status(500).json({ success: false, message: 'Login failed due to internal error.' });
+    return res.status(500).json({
+      success: false,
+      message: 'Login failed due to internal error: ' + (err.message || 'Unknown error')
+    });
   }
 });
 

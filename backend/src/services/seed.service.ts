@@ -235,9 +235,73 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
     include: { employee: true }
   });
 
+  // General Manager (GM)
+  const gmUser = await prismaClient.user.create({
+    data: {
+      email: 'gm@enterprise.com',
+      passwordHash: defaultPasswordHash,
+      role: 'GM',
+      isActive: true,
+      employee: {
+        create: {
+          employeeCode: 'EMP1000',
+          firstName: 'Vikram',
+          lastName: 'Malhotra',
+          departmentId: deptEngineering.id,
+          designation: 'General Manager (Operations & Strategy)',
+          phone: '+91 98765 43000',
+          avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80'
+        }
+      }
+    },
+    include: { employee: true }
+  });
+
+  // Create Authority Connections
+  await prismaClient.authorityConnection.create({
+    data: {
+      userId: employeeUser.id,
+      authorityUserId: managerUser.id,
+      connectionType: 'REPORTING_MANAGER',
+      status: 'ACTIVE',
+      startDate: new Date()
+    }
+  });
+
+  await prismaClient.authorityConnection.create({
+    data: {
+      userId: employeeUser.id,
+      authorityUserId: hrUser.id,
+      connectionType: 'HR_AUTHORITY',
+      status: 'ACTIVE',
+      startDate: new Date()
+    }
+  });
+
+  await prismaClient.authorityConnection.create({
+    data: {
+      userId: employeeUser2.id,
+      authorityUserId: managerUser.id,
+      connectionType: 'REPORTING_MANAGER',
+      status: 'ACTIVE',
+      startDate: new Date()
+    }
+  });
+
+  await prismaClient.authorityConnection.create({
+    data: {
+      userId: managerUser.id,
+      authorityUserId: gmUser.id,
+      connectionType: 'GM_AUTHORITY',
+      status: 'ACTIVE',
+      startDate: new Date()
+    }
+  });
+
   // 5. Initialize Leave Balances for all employees
   const allEmployees = [
     adminUser.employee!,
+    gmUser.employee!,
     hrUser.employee!,
     managerUser.employee!,
     employeeUser.employee!,
