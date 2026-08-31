@@ -13,9 +13,9 @@ import securityRoutes from './modules/security/security.routes';
 import attendanceRoutes from './modules/attendance/attendance.routes';
 import notificationRoutes from './modules/notifications/notification.routes';
 import auditRoutes from './modules/audit/audit.routes';
-
 import setupRoutes from './modules/setup/setup.routes';
 import authorityRoutes from './modules/authority/authority.routes';
+import visitorRoutes from './modules/visitors/visitor.routes';
 import { prisma } from './lib/prisma';
 
 const app = express();
@@ -79,6 +79,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/authority', authorityRoutes);
+app.use('/api/visitors', visitorRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

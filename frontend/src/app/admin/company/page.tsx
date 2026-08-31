@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import AppLayout from '@/components/layout/AppLayout';
+import { PageLoader } from '@/components/ui/Spinner';
 import {
   Users, UserCheck, UserX, Clock, CheckCircle2, XCircle, AlertCircle, Building2,
   TrendingUp, Shield, Briefcase, FileText, RefreshCw
@@ -39,17 +41,17 @@ interface Overview {
 
 function KpiCard({ icon, label, value, color, sub }: { icon: React.ReactNode; label: string; value: number | string; color: string; sub?: string }) {
   return (
-    <div className="card" style={{ padding: '18px 20px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+    <div className="card" style={{ padding: '16px 18px', display: 'flex', alignItems: 'flex-start', gap: 12, borderLeft: `4px solid ${color}` }}>
       <div style={{
-        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
         background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center'
       }}>
-        {React.cloneElement(icon as React.ReactElement, { size: 20, color })}
+        {React.cloneElement(icon as React.ReactElement, { size: 18, color })}
       </div>
       <div>
-        <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>{label}</div>
-        {sub && <div style={{ fontSize: '0.68rem', color: color, marginTop: 3 }}>{sub}</div>}
+        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--slate-800)', lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)', marginTop: 2 }}>{label}</div>
+        {sub && <div style={{ fontSize: '0.68rem', color: color, marginTop: 2, fontWeight: 600 }}>{sub}</div>}
       </div>
     </div>
   );
@@ -80,155 +82,121 @@ export default function CompanyPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  if (loading && !overview) {
+    return (
+      <AppLayout>
+        <PageLoader />
+      </AppLayout>
+    );
+  }
+
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 42, height: 42, borderRadius: 10,
-            background: 'linear-gradient(135deg, var(--primary-600), var(--primary-400))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <Building2 size={20} color="white" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>Company Overview</h1>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Last updated: {lastRefresh.toLocaleTimeString()}
-            </p>
+    <AppLayout>
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="page-header">
+          <div className="page-header-row">
+            <div>
+              <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Building2 size={22} style={{ color: 'var(--blue-700)' }} /> Company Overview
+              </h1>
+              <p>Real-time organization metrics, attendance, department breakdown & gate pass activity (Updated: {lastRefresh.toLocaleTimeString()})</p>
+            </div>
+            <button className="btn btn-outline btn-sm" onClick={fetchData} disabled={loading}>
+              <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Refresh
+            </button>
           </div>
         </div>
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-            borderRadius: 8, border: '1px solid var(--border)',
-            background: 'var(--surface)', color: 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: '0.83rem', fontWeight: 600
-          }}
-        >
-          <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-          Refresh
-        </button>
-      </div>
 
-      {loading && !overview ? (
-        <div style={{ textAlign: 'center', padding: 64, color: 'var(--text-secondary)' }}>Loading company data...</div>
-      ) : overview ? (
-        <>
-          {/* KPI Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 30 }}>
-            <KpiCard icon={<Users />} label="Total Employees" value={overview.totalEmployees} color="var(--primary-400)" />
-            <KpiCard icon={<UserCheck />} label="Present Today" value={overview.presentToday} color="var(--emerald-500)" sub={`${Math.round((overview.presentToday / Math.max(overview.totalEmployees, 1)) * 100)}% attendance`} />
-            <KpiCard icon={<UserX />} label="Absent Today" value={overview.absentToday} color="var(--red-400)" />
-            <KpiCard icon={<FileText />} label="On Leave Today" value={overview.onLeaveToday} color="#8B5CF6" />
-            <KpiCard icon={<TrendingUp />} label="Currently Outside" value={overview.currentlyOutside} color="#F59E0B" />
-            <KpiCard icon={<Clock />} label="Pending Approvals" value={overview.pendingLeave + overview.pendingExit} color="#F97316" sub={`${overview.pendingLeave} leave · ${overview.pendingExit} exit`} />
-            <KpiCard icon={<AlertCircle />} label="Late Returns" value={overview.lateReturns} color="var(--red-400)" />
-            <KpiCard icon={<XCircle />} label="Critical Cases" value={overview.criticalCases} color="#DC2626" />
-            <KpiCard icon={<Briefcase />} label="Total Managers" value={overview.totalManagers} color="var(--primary-400)" />
-            <KpiCard icon={<Users />} label="Total HR" value={overview.totalHR} color="#EC4899" />
-            <KpiCard icon={<Shield />} label="Security Staff" value={overview.totalSecurity} color="#64748B" />
-            <KpiCard icon={<UserX />} label="Inactive Users" value={overview.inactiveUsers} color="var(--slate-400)" />
-          </div>
+        {overview && (
+          <>
+            {/* KPI Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+              <KpiCard icon={<Users />} label="Total Employees" value={overview.totalEmployees} color="var(--blue-600)" />
+              <KpiCard icon={<UserCheck />} label="Present Today" value={overview.presentToday} color="var(--green-600)" sub={`${Math.round((overview.presentToday / Math.max(overview.totalEmployees, 1)) * 100)}% attendance`} />
+              <KpiCard icon={<UserX />} label="Absent Today" value={overview.absentToday} color="var(--red-500)" />
+              <KpiCard icon={<FileText />} label="On Leave Today" value={overview.onLeaveToday} color="#8b5cf6" />
+              <KpiCard icon={<TrendingUp />} label="Currently Outside" value={overview.currentlyOutside} color="var(--amber-500)" />
+              <KpiCard icon={<Clock />} label="Pending Approvals" value={overview.pendingLeave + overview.pendingExit} color="var(--amber-600)" sub={`${overview.pendingLeave} leave · ${overview.pendingExit} exit`} />
+              <KpiCard icon={<AlertCircle />} label="Late Returns" value={overview.lateReturns} color="var(--red-600)" />
+              <KpiCard icon={<XCircle />} label="Critical Cases" value={overview.criticalCases} color="#dc2626" />
+              <KpiCard icon={<Briefcase />} label="Total Managers" value={overview.totalManagers} color="var(--blue-700)" />
+              <KpiCard icon={<Users />} label="Total HR Staff" value={overview.totalHR} color="#ec4899" />
+              <KpiCard icon={<Shield />} label="Security Staff" value={overview.totalSecurity} color="var(--slate-600)" />
+              <KpiCard icon={<UserX />} label="Inactive Accounts" value={overview.inactiveUsers} color="var(--slate-400)" />
+            </div>
 
-          {/* Critical Alerts */}
-          {(overview.criticalCases > 0 || overview.lateReturns > 0) && (
-            <div style={{
-              padding: '14px 18px', borderRadius: 12, marginBottom: 24,
-              background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)',
-              display: 'flex', alignItems: 'center', gap: 12
-            }}>
-              <AlertCircle size={20} color="#DC2626" />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#DC2626' }}>Attention Required</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {overview.criticalCases > 0 && `${overview.criticalCases} critical pending case${overview.criticalCases > 1 ? 's' : ''} require escalation. `}
-                  {overview.lateReturns > 0 && `${overview.lateReturns} employee${overview.lateReturns > 1 ? 's are' : ' is'} overdue on return.`}
+            {/* Critical Alert */}
+            {(overview.criticalCases > 0 || overview.lateReturns > 0) && (
+              <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid var(--red-600)', background: 'var(--red-50)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <AlertCircle size={20} color="var(--red-600)" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--red-700)' }}>Action Required</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--slate-600)', marginTop: 2 }}>
+                    {overview.criticalCases > 0 && `${overview.criticalCases} critical pending request(s) require immediate escalation. `}
+                    {overview.lateReturns > 0 && `${overview.lateReturns} employee(s) are overdue on their return to premises.`}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Department Table */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Building2 size={16} color="var(--primary-400)" />
-              <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>Department-Wise Summary</h2>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>Today</span>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--surface-alt, rgba(255,255,255,0.03))' }}>
-                    {['Department', 'Total', 'Present', 'Absent', 'On Leave', 'Outside', 'Late Returns'].map(h => (
-                      <th key={h} style={{
-                        padding: '10px 16px', textAlign: h === 'Department' ? 'left' : 'center',
-                        fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.75rem',
-                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                        borderBottom: '1px solid var(--border)'
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {deptSummary.map((dept, i) => (
-                    <tr key={dept.id} style={{ borderBottom: i < deptSummary.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        <div>{dept.name}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 400 }}>{dept.code}</div>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: 'var(--text-primary)' }}>{dept.total}</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <span style={{ color: 'var(--emerald-500)', fontWeight: 600 }}>{dept.present}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <span style={{ color: dept.absent > 0 ? 'var(--red-400)' : 'var(--text-secondary)', fontWeight: dept.absent > 0 ? 600 : 400 }}>{dept.absent}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <span style={{ color: '#8B5CF6', fontWeight: dept.onLeave > 0 ? 600 : 400 }}>{dept.onLeave}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <span style={{ color: '#F59E0B', fontWeight: dept.outside > 0 ? 600 : 400 }}>{dept.outside}</span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        {dept.late > 0 ? (
-                          <span style={{
-                            padding: '3px 10px', borderRadius: 20,
-                            background: 'rgba(239,68,68,0.12)', color: 'var(--red-400)',
-                            fontWeight: 700, fontSize: '0.78rem'
-                          }}>{dept.late}</span>
-                        ) : (
-                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                        )}
-                      </td>
+            {/* Department Table */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title"><Building2 size={16} /> Department Attendance & Gate Breakdown</h3>
+              </div>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Department</th>
+                      <th style={{ textAlign: 'center' }}>Total Staff</th>
+                      <th style={{ textAlign: 'center' }}>Present</th>
+                      <th style={{ textAlign: 'center' }}>Absent</th>
+                      <th style={{ textAlign: 'center' }}>On Leave</th>
+                      <th style={{ textAlign: 'center' }}>Outside</th>
+                      <th style={{ textAlign: 'center' }}>Late Returns</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: 'rgba(99,102,241,0.05)', borderTop: '2px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--primary-400)', fontSize: '0.82rem' }}>TOTALS</td>
-                    {[
-                      deptSummary.reduce((s, d) => s + d.total, 0),
-                      deptSummary.reduce((s, d) => s + d.present, 0),
-                      deptSummary.reduce((s, d) => s + d.absent, 0),
-                      deptSummary.reduce((s, d) => s + d.onLeave, 0),
-                      deptSummary.reduce((s, d) => s + d.outside, 0),
-                      deptSummary.reduce((s, d) => s + d.late, 0),
-                    ].map((v, i) => (
-                      <td key={i} style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: 'var(--text-primary)' }}>{v}</td>
+                  </thead>
+                  <tbody>
+                    {deptSummary.map((dept) => (
+                      <tr key={dept.id}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{dept.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>Code: {dept.code}</div>
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 700 }}>{dept.total}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--green-600)', fontWeight: 600 }}>{dept.present}</td>
+                        <td style={{ textAlign: 'center', color: dept.absent > 0 ? 'var(--red-600)' : 'var(--slate-400)', fontWeight: dept.absent > 0 ? 600 : 400 }}>{dept.absent}</td>
+                        <td style={{ textAlign: 'center', color: '#8b5cf6', fontWeight: dept.onLeave > 0 ? 600 : 400 }}>{dept.onLeave}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--amber-600)', fontWeight: dept.outside > 0 ? 600 : 400 }}>{dept.outside}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          {dept.late > 0 ? (
+                            <span className="badge badge-danger" style={{ fontSize: '0.75rem' }}>{dept.late}</span>
+                          ) : (
+                            <span style={{ color: 'var(--slate-400)' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
                     ))}
-                  </tr>
-                </tfoot>
-              </table>
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--blue-50)', fontWeight: 800 }}>
+                      <td style={{ color: 'var(--blue-900)' }}>TOTALS</td>
+                      <td style={{ textAlign: 'center' }}>{deptSummary.reduce((s, d) => s + d.total, 0)}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--green-700)' }}>{deptSummary.reduce((s, d) => s + d.present, 0)}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--red-700)' }}>{deptSummary.reduce((s, d) => s + d.absent, 0)}</td>
+                      <td style={{ textAlign: 'center', color: '#7c3aed' }}>{deptSummary.reduce((s, d) => s + d.onLeave, 0)}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--amber-700)' }}>{deptSummary.reduce((s, d) => s + d.outside, 0)}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--red-700)' }}>{deptSummary.reduce((s, d) => s + d.late, 0)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-          </div>
-        </>
-      ) : (
-        <div style={{ textAlign: 'center', padding: 64, color: 'var(--text-secondary)' }}>Failed to load data</div>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </AppLayout>
   );
 }

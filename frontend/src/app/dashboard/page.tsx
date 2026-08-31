@@ -843,6 +843,371 @@ function LeaveRequestModal({ open, onClose, onSuccess }: { open: boolean; onClos
 }
 
 // =============================================
+// GM (GENERAL MANAGER) DASHBOARD
+// =============================================
+function GMDashboard() {
+  const { user } = useAuth();
+  const [summary, setSummary] = useState<any>(null);
+  const [criticalLeaves, setCriticalLeaves] = useState<any[]>([]);
+  const [criticalExits, setCriticalExits] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionModal, setActionModal] = useState<{ open: boolean; id: string; type: 'leave' | 'exit'; action: 'APPROVE' | 'REJECT' | 'SEND_BACK' }>({ open: false, id: '', type: 'leave', action: 'APPROVE' });
+  const [comments, setComments] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      api.get('/users/company/summary').catch(() => ({ data: { data: null } })),
+      api.get('/leave/requests').catch(() => ({ data: { data: [] } })),
+      api.get('/exit-requests').catch(() => ({ data: { data: [] } })),
+    ]).then(([sumRes, leaveRes, exitRes]) => {
+      setSummary(sumRes.data?.data);
+      const allLeaves = leaveRes.data?.data || [];
+      const allExits = exitRes.data?.data || [];
+
+      // GM sees: Long leave (>2 days), Critical leaves, or Pending GM/HR
+      const gmLeaves = allLeaves.filter((l: any) =>
+        l.isCritical || l.totalDays > 2 || ['PENDING_GM', 'PENDING_HR', 'PENDING_SUPER_ADMIN'].includes(l.status)
+      );
+
+      // GM sees: Urgent exits, Critical exits, or Pending GM
+      const gmExits = allExits.filter((e: any) =>
+        e.isUrgent || ['PENDING_GM', 'PENDING_HR'].includes(e.status)
+      );
+
+      setCriticalLeaves(gmLeaves);
+      setCriticalExits(gmExits);
+    }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const handleAction = async () => {
+    setSubmitting(true);
+    try {
+      const url = actionModal.type === 'leave'
+        ? `/leave/requests/${actionModal.id}/review`
+        : `/exit-requests/${actionModal.id}/review`;
+
+      const statusMap: Record<string, string> = {
+        APPROVE: 'APPROVED',
+        REJECT: 'REJECTED',
+        SEND_BACK: 'PENDING_MANAGER'
+      };
+
+      await api.patch(url, {
+        status: statusMap[actionModal.action],
+        comments: comments || `GM ${actionModal.action} decision`
+      });
+
+      setActionModal({ open: false, id: '', type: 'leave', action: 'APPROVE' });
+      setComments('');
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Action failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return <PageLoader />;
+
+  const overview = summary?.overview || {};
+  const deptSummary = summary?.departmentSummary || [];
+  const totalCriticalPending = criticalLeaves.filter(l => ['PENDING_GM', 'PENDING_HR', 'PENDING_MANAGER'].includes(l.status)).length +
+    criticalExits.filter(e => ['PENDING_GM', 'PENDING_HR', 'PENDING_MANAGER'].includes(e.status)).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Welcome Banner */}
+      <div className="card" style={{ borderLeft: '4px solid var(--blue-700)', background: 'linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%)' }}>
+        <div className="card-body" style={{ padding: '20px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge badge-blue" style={{ fontWeight: 800 }}>EXECUTIVE PORTAL</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--slate-500)' }}>Selective Authority & Corporate Oversight</span>
+              </div>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--slate-800)', marginTop: 4 }}>
+                Welcome, {user?.employee?.firstName || 'General Manager'}!
+              </h2>
+              <p style={{ color: 'var(--slate-600)', fontSize: '0.82rem', marginTop: 2 }}>
+                High-level governance, critical escalation reviews & corporate operations matrix
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowLeaveModal(true)}>
+                <Calendar size={14} /> My Leave Request
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowExitModal(true)}>
+                <Plus size={14} /> My Exit Permission
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Executive KPI Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+        <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid var(--blue-700)' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--slate-500)' }}>Total Workforce</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--blue-700)', marginTop: 2 }}>{overview.totalEmployees || 0}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--slate-400)' }}>Across all departments</div>
+        </div>
+
+        <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid var(--green-600)' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--green-700)' }}>On-Site Today</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--green-600)', marginTop: 2 }}>{overview.presentToday || 0}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--green-700)' }}>Active in premises</div>
+        </div>
+
+        <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid #8b5cf6' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>On Approved Leave</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5cf6', marginTop: 2 }}>{overview.onLeaveToday || 0}</div>
+          <div style={{ fontSize: '0.68rem', color: '#7c3aed' }}>Scheduled absences</div>
+        </div>
+
+        <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid var(--amber-500)' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--amber-700)' }}>Currently Outside</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--amber-600)', marginTop: 2 }}>{overview.currentlyOutside || 0}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--amber-700)' }}>On gate pass permission</div>
+        </div>
+
+        <div className="card" style={{ padding: '14px 18px', borderLeft: `4px solid ${totalCriticalPending > 0 ? 'var(--red-600)' : 'var(--slate-400)'}` }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: totalCriticalPending > 0 ? 'var(--red-600)' : 'var(--slate-500)' }}>
+            🔴 Critical & Escalated
+          </div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: totalCriticalPending > 0 ? 'var(--red-600)' : 'var(--slate-800)', marginTop: 2 }}>
+            {totalCriticalPending}
+          </div>
+          <div style={{ fontSize: '0.68rem', color: totalCriticalPending > 0 ? 'var(--red-600)' : 'var(--slate-400)' }}>
+            {totalCriticalPending > 0 ? 'Executive review required' : 'All clear'}
+          </div>
+        </div>
+      </div>
+
+      {/* 🔴 Section: Critical & Escalated Requests Queue */}
+      <div className="card">
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--slate-800)' }}>
+            <AlertTriangle size={16} color="var(--red-600)" /> Critical Requests & Long Leave Escalations
+          </h3>
+          <span className="badge badge-blue">Selective GM Scope</span>
+        </div>
+
+        {criticalLeaves.length === 0 && criticalExits.length === 0 ? (
+          <div className="empty-state">
+            <CheckCircle2 size={36} color="var(--green-600)" />
+            <h4>No Escalated Cases</h4>
+            <p>Routine requests are handled by Department Managers and HR. Only critical cases appear here.</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Category</th>
+                  <th>Details</th>
+                  <th>Duration / Window</th>
+                  <th>Approval Chain</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {criticalLeaves.map(l => (
+                  <tr key={l.id}>
+                    <td>
+                      <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{l.employee?.firstName} {l.employee?.lastName}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{l.employee?.employeeCode} · {l.employee?.department?.name}</div>
+                    </td>
+                    <td>
+                      <span className="badge badge-blue" style={{ fontSize: '0.7rem' }}>
+                        {l.leaveType?.name || 'LEAVE'} {l.totalDays > 2 && '(LONG LEAVE)'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: '0.8125rem' }}>{l.reason}</td>
+                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>
+                      {fmtDate(l.fromDate)} → {fmtDate(l.toDate)} ({l.totalDays}d)
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, background: 'var(--green-50)', color: 'var(--green-700)', fontWeight: 600 }}>
+                          Mgr: ✓
+                        </span>
+                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, background: 'var(--blue-50)', color: 'var(--blue-700)', fontWeight: 600 }}>
+                          HR: ✓
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${statusBadgeClass(l.status)}`}>{statusLabel(l.status)}</span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-success btn-xs"
+                          onClick={() => setActionModal({ open: true, id: l.id, type: 'leave', action: 'APPROVE' })}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn btn-danger-outline btn-xs"
+                          onClick={() => setActionModal({ open: true, id: l.id, type: 'leave', action: 'REJECT' })}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {criticalExits.map(e => (
+                  <tr key={e.id}>
+                    <td>
+                      <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{e.employee?.firstName} {e.employee?.lastName}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{e.employee?.employeeCode} · {e.employee?.department?.name}</div>
+                    </td>
+                    <td>
+                      <span className="badge badge-danger" style={{ fontSize: '0.7rem' }}>
+                        🚨 URGENT EXIT
+                      </span>
+                    </td>
+                    <td style={{ fontSize: '0.8125rem' }}>
+                      <strong>{e.destination}</strong> — {e.reason}
+                    </td>
+                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>
+                      {fmtDate(e.exitDate)} · {e.exitTime}–{e.expectedReturnTime}
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, background: 'var(--green-50)', color: 'var(--green-700)', fontWeight: 600 }}>
+                        Mgr: ✓
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${statusBadgeClass(e.status)}`}>{statusLabel(e.status)}</span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-success btn-xs"
+                          onClick={() => setActionModal({ open: true, id: e.id, type: 'exit', action: 'APPROVE' })}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn btn-danger-outline btn-xs"
+                          onClick={() => setActionModal({ open: true, id: e.id, type: 'exit', action: 'REJECT' })}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 🏢 Section: High-Level Department Operations Matrix */}
+      {deptSummary.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">
+              <Users size={16} /> Department Operations & Workforce Summary
+            </h3>
+            <span className="badge badge-blue">Executive Aggregates</span>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>Code</th>
+                  <th>Total Staff</th>
+                  <th>Present On-Site</th>
+                  <th>On Leave</th>
+                  <th>Currently Outside</th>
+                  <th>Overdue / Late</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deptSummary.map((d: any) => (
+                  <tr key={d.id}>
+                    <td style={{ fontWeight: 700 }}>{d.name}</td>
+                    <td className="font-mono">{d.code}</td>
+                    <td style={{ fontWeight: 600 }}>{d.total}</td>
+                    <td><span className="badge badge-success">{d.present}</span></td>
+                    <td><span className="badge" style={{ background: '#ede9fe', color: '#7c3aed' }}>{d.onLeave}</span></td>
+                    <td><span className="badge badge-amber">{d.outside}</span></td>
+                    <td>
+                      {d.late > 0 ? (
+                        <span className="badge badge-danger">🚨 {d.late} OVERDUE</span>
+                      ) : (
+                        <span className="badge badge-success">0</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Action Modal */}
+      <Modal
+        open={actionModal.open}
+        onClose={() => setActionModal({ open: false, id: '', type: 'leave', action: 'APPROVE' })}
+        title={`Executive Decision: ${actionModal.action}`}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setActionModal({ open: false, id: '', type: 'leave', action: 'APPROVE' })}>
+              Cancel
+            </button>
+            <button
+              className={`btn ${actionModal.action === 'APPROVE' ? 'btn-success' : 'btn-danger'}`}
+              onClick={handleAction}
+              disabled={submitting}
+            >
+              {submitting ? <><Spinner white size="sm" /> Processing...</> : `Confirm ${actionModal.action}`}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p style={{ fontSize: '0.85rem', color: 'var(--slate-700)' }}>
+            You are recording an executive <strong>{actionModal.action}</strong> on this {actionModal.type} request.
+          </p>
+          <div className="form-group">
+            <label className="form-label">Executive Notes / Reason</label>
+            <textarea
+              className="form-control"
+              rows={3}
+              value={comments}
+              onChange={e => setComments(e.target.value)}
+              placeholder="e.g. Approved under executive emergency exception..."
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Personal Leave & Exit Modals for GM */}
+      <ExitRequestModal open={showExitModal} onClose={() => setShowExitModal(false)} onSuccess={() => { setShowExitModal(false); load(); }} />
+      <LeaveRequestModal open={showLeaveModal} onClose={() => setShowLeaveModal(false)} onSuccess={() => { setShowLeaveModal(false); load(); }} />
+    </div>
+  );
+}
+
+// =============================================
 // MAIN DASHBOARD PAGE
 // =============================================
 export default function DashboardPage() {
@@ -858,7 +1223,8 @@ export default function DashboardPage() {
       case 'HR': return <HRDashboard />;
       case 'SECURITY_GUARD': return <SecurityDashboard />;
       case 'SUPER_ADMIN': return <AdminDashboard />;
-      default: return <div>Unknown role</div>;
+      case 'GM' as any: return <GMDashboard />;
+      default: return <GMDashboard />;
     }
   };
 

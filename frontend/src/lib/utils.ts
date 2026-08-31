@@ -31,9 +31,9 @@ export function initials(firstName?: string, lastName?: string): string {
 
 export function statusBadgeClass(status: string): string {
   const s = status?.toUpperCase();
-  if (['APPROVED', 'ACTIVE', 'RETURNED', 'COMPLETED', 'PRESENT'].includes(s)) return 'badge-green';
-  if (['PENDING_MANAGER', 'PENDING_HR', 'PENDING_SUPER_ADMIN', 'PENDING'].includes(s)) return 'badge-amber';
-  if (['REJECTED', 'CANCELLED', 'EXPIRED', 'LATE_RETURN'].includes(s)) return 'badge-red';
+  if (['APPROVED', 'ACTIVE', 'RETURNED', 'COMPLETED', 'PRESENT', 'CHECKED_IN', 'CHECKED_OUT'].includes(s)) return 'badge-green';
+  if (['PENDING_MANAGER', 'PENDING_HR', 'PENDING_SUPER_ADMIN', 'PENDING', 'PENDING_HOST', 'WAITING'].includes(s)) return 'badge-amber';
+  if (['REJECTED', 'CANCELLED', 'EXPIRED', 'LATE_RETURN', 'OVERDUE'].includes(s)) return 'badge-red';
   if (['EXITED', 'ON_EXIT_PERMISSION', 'USED'].includes(s)) return 'badge-blue';
   return 'badge-slate';
 }
@@ -44,6 +44,7 @@ export function statusLabel(status: string): string {
     PENDING_HR: 'Pending HR',
     PENDING_SUPER_ADMIN: 'Pending Admin',
     PENDING: 'Pending',
+    PENDING_HOST: 'Awaiting Host',
     APPROVED: 'Approved',
     REJECTED: 'Rejected',
     CANCELLED: 'Cancelled',
@@ -57,7 +58,11 @@ export function statusLabel(status: string): string {
     PRESENT: 'Present',
     ABSENT: 'Absent',
     ON_LEAVE: 'On Leave',
-    ON_EXIT_PERMISSION: 'On Exit'
+    ON_EXIT_PERMISSION: 'On Exit',
+    WAITING: 'Waiting',
+    CHECKED_IN: 'Checked In',
+    CHECKED_OUT: 'Checked Out',
+    OVERDUE: 'Overdue',
   };
   return map[status] || status;
 }

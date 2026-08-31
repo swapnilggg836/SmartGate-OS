@@ -12,6 +12,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/gate-passes': 'My Gate Pass',
   '/approvals': 'Approvals',
   '/security': 'Gate Security',
+  '/security/visitors': 'Visitor Console',
+  '/visitors': 'Visitors',
   '/employees': 'Employee Directory',
   '/attendance': 'Attendance',
   '/notifications': 'Notifications',
@@ -21,6 +23,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/users': 'User Management',
   '/admin/departments': 'Departments',
   '/admin/leave-types': 'Leave Types',
+  '/admin/visitors': 'Visitor Management',
+  '/authority': 'Authority Connections',
+  '/authority/my-team': 'My Team',
+  '/admin/company': 'Company Overview',
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

@@ -190,8 +190,8 @@ router.get('/employees/:id', authenticate, async (req: AuthenticatedRequest, res
   }
 });
 
-// PATCH /api/users/:id/status (Admin only — activate/deactivate)
-router.patch('/:id/status', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+// PATCH /api/users/:id/status (Admin / HR — activate/deactivate)
+router.patch('/:id/status', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { isActive } = req.body;
@@ -222,6 +222,81 @@ router.patch('/:id/status', authenticate, requireRoles(UserRole.SUPER_ADMIN), as
     return res.json({ success: true, data: { id: user.id, isActive: user.isActive } });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to update user status' });
+  }
+});
+
+// PATCH /api/users/employees/:id/transfer (Admin / HR — Department Transfer)
+router.patch('/employees/:id/transfer', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { newDepartmentId, newDesignation, notes } = req.body;
+
+    const employee = await prisma.employee.findUnique({
+      where: { id },
+      include: { department: true }
+    });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    const newDept = await prisma.department.findUnique({ where: { id: newDepartmentId } });
+    if (!newDept) {
+      return res.status(404).json({ success: false, message: 'Target department not found' });
+    }
+
+    const oldDeptName = employee.department?.name || 'Unassigned';
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update employee record
+      await tx.employee.update({
+        where: { id },
+        data: {
+          departmentId: newDepartmentId,
+          designation: newDesignation || employee.designation
+        }
+      });
+
+      // 2. Record historical timeline
+      await tx.employeeStatusHistory.create({
+        data: {
+          employeeId: id,
+          changeType: 'DEPT_CHANGE',
+          oldValue: oldDeptName,
+          newValue: `${newDept.name}${newDesignation ? ` (${newDesignation})` : ''}`,
+          changedBy: req.user!.userId,
+          notes: notes || `Transferred from ${oldDeptName} to ${newDept.name} by HR/Admin`
+        }
+      });
+
+      // 3. Mark old reporting manager connection as NEEDS_REASSIGNMENT if manager was dept-specific
+      const managerConn = await tx.authorityConnection.findFirst({
+        where: { userId: employee.userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' }
+      });
+      if (managerConn) {
+        await tx.authorityConnection.update({
+          where: { id: managerConn.id },
+          data: { status: 'NEEDS_REASSIGNMENT' }
+        });
+      }
+    });
+
+    await logAudit({
+      userId: req.user!.userId,
+      action: 'EMPLOYEE_DEPT_TRANSFERRED',
+      entity: 'Employee',
+      entityId: id,
+      newValues: { oldDept: oldDeptName, newDept: newDept.name, newDesignation },
+      req
+    });
+
+    return res.json({
+      success: true,
+      message: `Employee transferred to ${newDept.name} successfully.`
+    });
+  } catch (err: any) {
+    console.error('Transfer employee error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to transfer employee.' });
   }
 });
 
@@ -302,13 +377,20 @@ router.get('/:id/roles', authenticate, async (req: AuthenticatedRequest, res: Re
   }
 });
 
-// GET /api/users/:id/journey — Full employee journey (Admin only)
-router.get('/:id/journey', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/users/:id/journey — Full employee journey (Admin / HR / GM / Manager)
+router.get('/:id/journey', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, UserRole.MANAGER, 'GM'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const user = await prisma.user.findUnique({ where: { id }, include: { employee: true } });
+    let user = await prisma.user.findUnique({ where: { id }, include: { employee: true } });
+    if (!user) {
+      const emp = await prisma.employee.findUnique({ where: { id }, include: { user: true } });
+      if (emp?.user) {
+        user = { ...emp.user, employee: emp } as any;
+      }
+    }
     if (!user?.employee) return res.status(404).json({ success: false, message: 'Employee not found' });
     const employeeId = user.employee.id;
+    const resolvedUserId = user.id;
 
     const [statusHistory, leaveRequests, exitRequests, gatePassHistory, attendanceRecords, authorityConnections, auditLogs] = await Promise.all([
       prisma.employeeStatusHistory.findMany({ where: { employeeId }, orderBy: { createdAt: 'desc' } }),
@@ -325,11 +407,11 @@ router.get('/:id/journey', authenticate, requireRoles(UserRole.SUPER_ADMIN), asy
       prisma.gatePass.findMany({ where: { employeeId }, include: { gateLogs: true }, orderBy: { createdAt: 'desc' } }),
       prisma.attendance.findMany({ where: { employeeId }, orderBy: { date: 'desc' }, take: 90 }),
       prisma.authorityConnection.findMany({
-        where: { userId: id },
+        where: { userId: resolvedUserId },
         include: { authorityUser: { include: { employee: true } } },
         orderBy: { createdAt: 'desc' }
       }),
-      prisma.auditLog.findMany({ where: { userId: id }, orderBy: { createdAt: 'desc' }, take: 100 })
+      prisma.auditLog.findMany({ where: { userId: resolvedUserId }, orderBy: { createdAt: 'desc' }, take: 100 })
     ]);
 
     return res.json({
@@ -345,8 +427,8 @@ router.get('/:id/journey', authenticate, requireRoles(UserRole.SUPER_ADMIN), asy
   }
 });
 
-// GET /api/users/company/summary — Company-wide KPIs (Admin only)
-router.get('/company/summary', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/users/company/summary — Company-wide KPIs (Admin / HR / GM)
+router.get('/company/summary', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, 'GM'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

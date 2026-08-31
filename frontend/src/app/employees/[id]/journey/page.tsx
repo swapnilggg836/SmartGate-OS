@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import AppLayout from '@/components/layout/AppLayout';
+import { PageLoader } from '@/components/ui/Spinner';
 import {
   UserCircle, Calendar, Shield, FileText, Clock, GitBranch, Activity,
   CheckCircle2, XCircle, AlertCircle, ArrowRight, Building2, Briefcase
@@ -34,8 +36,15 @@ export default function EmployeeJourneyPage() {
     fetchJourney();
   }, [userId]);
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 64, color: 'var(--text-secondary)' }}>Loading journey...</div>;
-  if (error || !data) return <div style={{ textAlign: 'center', padding: 64, color: 'var(--red-400)' }}>{error || 'Not found'}</div>;
+  if (loading) return <AppLayout><PageLoader /></AppLayout>;
+  if (error || !data) return (
+    <AppLayout>
+      <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+        <AlertCircle size={36} color="var(--red-600)" style={{ margin: '0 auto 12px' }} />
+        <h4>{error || 'Employee Journey Not Found'}</h4>
+      </div>
+    </AppLayout>
+  );
 
   const { employee, user, statusHistory, leaveRequests, exitRequests, gatePassHistory, authorityConnections, auditLogs } = data;
 
@@ -69,13 +78,78 @@ export default function EmployeeJourneyPage() {
     );
   };
 
+  const exportToCsv = () => {
+    if (!data) return;
+    const { employee, user, statusHistory, leaveRequests, exitRequests, gatePassHistory, authorityConnections, auditLogs } = data;
+    const lines: string[] = [];
+
+    lines.push('=== SMARTGATE OS - 360 DEGREE EMPLOYEE JOURNEY REPORT ===');
+    lines.push(`Generated on,${new Date().toLocaleString()}`);
+    lines.push('');
+
+    lines.push('--- EMPLOYEE PROFILE ---');
+    lines.push(`Employee Name,"${employee.firstName} ${employee.lastName}"`);
+    lines.push(`Employee ID,${employee.employeeCode}`);
+    lines.push(`Work Email,${user.email}`);
+    lines.push(`Role,${user.role}`);
+    lines.push(`Designation,"${employee.designation}"`);
+    lines.push(`Department,"${employee.departmentId || ''}"`);
+    lines.push(`Joining Date,${new Date(employee.joiningDate).toLocaleDateString()}`);
+    lines.push(`Account Status,${user.isActive ? 'ACTIVE' : 'INACTIVE'}`);
+    lines.push('');
+
+    lines.push('--- STATUS & DEPARTMENT TRANSFER HISTORY ---');
+    lines.push('Date,Change Type,Old Value,New Value,Notes');
+    statusHistory.forEach((h: any) => {
+      lines.push(`${new Date(h.createdAt).toLocaleDateString()},${h.changeType},"${h.oldValue || ''}","${h.newValue || ''}","${h.notes || ''}"`);
+    });
+    lines.push('');
+
+    lines.push('--- LEAVE REQUESTS HISTORY ---');
+    lines.push('Request ID,Leave Type,From Date,To Date,Days,Status,Reason');
+    leaveRequests.forEach((l: any) => {
+      lines.push(`${l.id},${l.leaveType?.name || 'Leave'},${new Date(l.fromDate).toLocaleDateString()},${new Date(l.toDate).toLocaleDateString()},${l.totalDays},${l.status},"${(l.reason || '').replace(/"/g, '""')}"`);
+    });
+    lines.push('');
+
+    lines.push('--- EXIT PERMISSIONS & GATE PASS HISTORY ---');
+    lines.push('Pass Number,Exit Date,Exit Time,Expected Return,Actual Exit,Actual Return,Destination,Status');
+    gatePassHistory.forEach((g: any) => {
+      lines.push(`${g.passNumber},${new Date(g.createdAt).toLocaleDateString()},${g.exitRequest?.exitTime || ''},${g.exitRequest?.expectedReturnTime || ''},${g.gateLogs?.[0]?.actualExitTime ? new Date(g.gateLogs[0].actualExitTime).toLocaleTimeString() : '—'},${g.gateLogs?.[0]?.actualReturnTime ? new Date(g.gateLogs[0].actualReturnTime).toLocaleTimeString() : '—'},"${g.exitRequest?.destination || ''}",${g.status}`);
+    });
+    lines.push('');
+
+    lines.push('--- AUTHORITY CONNECTIONS ---');
+    lines.push('Connection Type,Authority User,Status');
+    authorityConnections.forEach((c: any) => {
+      lines.push(`${c.connectionType},"${c.authorityUser?.employee?.firstName || ''} ${c.authorityUser?.employee?.lastName || c.authorityUser?.email}",${c.status}`);
+    });
+    lines.push('');
+
+    lines.push('--- AUDIT TRAIL ---');
+    lines.push('Action,Entity,Entity ID,Date');
+    auditLogs.forEach((a: any) => {
+      lines.push(`${a.action},${a.entity},${a.entityId},${new Date(a.createdAt).toLocaleString()}`);
+    });
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `360-journey-${employee.employeeCode}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+    <AppLayout>
+      <div className="space-y-4">
       {/* Employee Header */}
       <div className="card" style={{ padding: 20, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div style={{
           width: 64, height: 64, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-          background: 'linear-gradient(135deg, var(--primary-600), var(--primary-400))',
+          background: 'linear-gradient(135deg, var(--blue-700), var(--blue-500))',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1.3rem', fontWeight: 800, color: 'white'
         }}>
@@ -84,27 +158,32 @@ export default function EmployeeJourneyPage() {
             : `${employee?.firstName?.[0]}${employee?.lastName?.[0]}`}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
+          <div style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--slate-800)' }}>
             {employee?.firstName} {employee?.lastName}
           </div>
-          <div style={{ fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+          <div style={{ fontSize: '0.83rem', color: 'var(--slate-600)', marginTop: 2 }}>
             {employee?.employeeCode} · {employee?.designation}
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <Building2 size={12} /> {employee?.departmentId}
             </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <Calendar size={12} /> Joined {new Date(employee?.joiningDate).toLocaleDateString()}
             </span>
-            <span style={{ fontSize: '0.75rem', color: user?.isActive ? 'var(--emerald-400)' : 'var(--red-400)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: '0.75rem', color: user?.isActive ? 'var(--green-700)' : 'var(--red-600)', display: 'flex', alignItems: 'center', gap: 4 }}>
               {user?.isActive ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
               {user?.isActive ? 'Active' : 'Inactive'}
             </span>
           </div>
         </div>
-        <div style={{ padding: '8px 16px', borderRadius: 8, background: 'rgba(99,102,241,0.12)', color: 'var(--primary-400)', fontWeight: 700, fontSize: '0.85rem' }}>
-          {user?.role?.replace('_', ' ')}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-primary btn-sm" onClick={exportToCsv}>
+            <FileText size={14} /> Download 360° Report (.CSV)
+          </button>
+          <div style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--blue-50)', color: 'var(--blue-700)', fontWeight: 700, fontSize: '0.8rem' }}>
+            {user?.role?.replace('_', ' ')}
+          </div>
         </div>
       </div>
 
@@ -317,6 +396,7 @@ export default function EmployeeJourneyPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </AppLayout>
   );
 }

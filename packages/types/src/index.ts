@@ -8,3 +8,4 @@ export * from './attendance';
 export * from './notification';
 export * from './audit';
 export * from './authority';
+export * from './visitor';

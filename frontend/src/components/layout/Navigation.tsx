@@ -8,7 +8,7 @@ import { useNotifications } from '@/context/NotificationContext';
 import { initials } from '@/lib/utils';
 import {
   LayoutDashboard, FileText, LogOut, User, Bell, Shield, Users, Calendar,
-  ClipboardList, Settings, Menu, X, QrCode, UserCheck, BookOpen
+  ClipboardList, Settings, Menu, X, QrCode, UserCheck, BookOpen, UserPlus
 } from 'lucide-react';
 
 interface NavItem {
@@ -23,22 +23,26 @@ function useNavItems(role: string, pendingCount: number, unread: number): NavIte
   const items: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'GM', 'EMPLOYEE', 'SECURITY_GUARD'] },
     // Personal requests & passes
-    { label: 'My Requests', href: '/requests', icon: <FileText size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM'] },
-    { label: 'My Gate Pass', href: '/gate-passes', icon: <QrCode size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM'] },
+    { label: 'My Requests', href: '/requests', icon: <FileText size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SECURITY_GUARD'] },
+    { label: 'My Gate Pass', href: '/gate-passes', icon: <QrCode size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SECURITY_GUARD'] },
+    // Visitors
+    { label: 'Visitors', href: '/visitors', icon: <UserPlus size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SUPER_ADMIN', 'SECURITY_GUARD'] },
     // Authority connections
-    { label: 'My Authorities', href: '/authority', icon: <UserCheck size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM'] },
+    { label: 'My Authorities', href: '/authority', icon: <UserCheck size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SECURITY_GUARD'] },
     // Approvals (Manager, HR, GM, Super Admin)
     { label: 'Approvals', href: '/approvals', icon: <ClipboardList size={16} />, badge: pendingCount || undefined, roles: ['MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
     // My Team (Manager/HR)
     { label: 'My Team', href: '/authority/my-team', icon: <Users size={16} />, roles: ['MANAGER', 'HR', 'GM'] },
     // Security Guard & Super Admin
     { label: 'Gate Security', href: '/security', icon: <Shield size={16} />, roles: ['SECURITY_GUARD', 'SUPER_ADMIN'] },
+    { label: 'Visitor Console', href: '/security/visitors', icon: <UserPlus size={16} />, roles: ['SECURITY_GUARD', 'SUPER_ADMIN'] },
     // Attendance
     { label: 'Attendance', href: '/attendance', icon: <Calendar size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
     // Employees (HR, Admin, Manager)
     { label: 'Employees', href: '/employees', icon: <Users size={16} />, roles: ['HR', 'SUPER_ADMIN', 'MANAGER'] },
     // Admin config
     { label: 'Leave Types', href: '/admin/leave-types', icon: <BookOpen size={16} />, roles: ['HR', 'SUPER_ADMIN'] },
+    { label: 'Visitor Mgmt', href: '/admin/visitors', icon: <UserPlus size={16} />, roles: ['SUPER_ADMIN', 'HR', 'GM'] },
     { label: 'Departments', href: '/admin/departments', icon: <Settings size={16} />, roles: ['SUPER_ADMIN'] },
     { label: 'Users', href: '/admin/users', icon: <UserCheck size={16} />, roles: ['SUPER_ADMIN'] },
     { label: 'Company Report', href: '/admin/company', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN', 'GM'] },
@@ -221,6 +225,7 @@ export function MobileNav() {
     if (role === 'SECURITY_GUARD') return [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Home' },
       { href: '/security', icon: <Shield size={20} />, label: 'Gate Log' },
+      { href: '/security/visitors', icon: <UserPlus size={20} />, label: 'Visitors' },
       { href: '/notifications', icon: <Bell size={20} />, label: 'Alerts', badge: unreadCount },
       { href: '/profile', icon: <User size={20} />, label: 'Profile' },
     ];

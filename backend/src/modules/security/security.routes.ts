@@ -373,4 +373,166 @@ router.post('/return', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserR
   }
 });
 
+// GET /api/security/stats — Real-time security operational stats
+router.get('/stats', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    const now = new Date();
+
+    const [
+      activePassesCount,
+      currentlyOutsideLogs,
+      todayExitsCount,
+      todayReturnsCount,
+      visitorsInsideCount,
+      expectedVisitorsCount
+    ] = await Promise.all([
+      prisma.gatePass.count({
+        where: {
+          status: 'ACTIVE',
+          validUntil: { gte: today }
+        }
+      }),
+      prisma.gateLog.findMany({
+        where: {
+          exitStatus: 'EXITED',
+          returnStatus: 'PENDING'
+        },
+        include: { employee: true, gatePass: { include: { exitRequest: true } } }
+      }),
+      prisma.gateLog.count({
+        where: {
+          actualExitTime: { gte: today, lt: tomorrow }
+        }
+      }),
+      prisma.gateLog.count({
+        where: {
+          actualReturnTime: { gte: today, lt: tomorrow }
+        }
+      }),
+      prisma.visitorVisit.count({
+        where: { status: 'INSIDE' }
+      }),
+      prisma.visitorVisit.count({
+        where: {
+          visitDate: { gte: today, lt: tomorrow },
+          status: { in: ['APPROVED', 'PENDING'] }
+        }
+      })
+    ]);
+
+    const overdueCount = currentlyOutsideLogs.filter(l => now > l.expectedReturnTime).length;
+
+    return res.json({
+      success: true,
+      data: {
+        activePassesCount,
+        currentlyOutsideCount: currentlyOutsideLogs.length,
+        overdueCount,
+        todayExitsCount,
+        todayReturnsCount,
+        visitorsInsideCount,
+        expectedVisitorsCount
+      }
+    });
+  } catch (err: any) {
+    console.error('Security stats error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch security stats' });
+  }
+});
+
+// GET /api/security/currently-outside — List of all employees currently outside
+router.get('/currently-outside', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const logs = await prisma.gateLog.findMany({
+      where: {
+        exitStatus: 'EXITED',
+        returnStatus: 'PENDING'
+      },
+      include: {
+        employee: {
+          include: {
+            department: true,
+            user: { select: { email: true } }
+          }
+        },
+        gatePass: {
+          include: {
+            exitRequest: true
+          }
+        },
+        securityUser: {
+          include: {
+            employee: true
+          }
+        }
+      },
+      orderBy: { actualExitTime: 'asc' }
+    });
+
+    const now = new Date();
+    const enriched = logs.map(l => {
+      const isOverdue = now > l.expectedReturnTime;
+      const elapsedMins = l.actualExitTime ? Math.floor((now.getTime() - new Date(l.actualExitTime).getTime()) / 60000) : 0;
+      const lateMins = isOverdue ? Math.floor((now.getTime() - new Date(l.expectedReturnTime).getTime()) / 60000) : 0;
+
+      return {
+        ...l,
+        isOverdue,
+        elapsedMins,
+        lateMins
+      };
+    });
+
+    return res.json({ success: true, data: enriched });
+  } catch (err: any) {
+    console.error('Currently outside error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch currently outside employees' });
+  }
+});
+
+// GET /api/security/emergency-roll — Instant emergency evacuation list
+router.get('/emergency-roll', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const [employeesOutside, visitorsInside] = await Promise.all([
+      prisma.gateLog.findMany({
+        where: {
+          exitStatus: 'EXITED',
+          returnStatus: 'PENDING'
+        },
+        include: {
+          employee: { include: { department: true } },
+          gatePass: { include: { exitRequest: true } }
+        }
+      }),
+      prisma.visitorVisit.findMany({
+        where: { status: 'INSIDE' },
+        include: {
+          visitor: true,
+          hostUser: { include: { employee: { include: { department: true } } } },
+          groupMembers: true,
+          visitorPass: true,
+          checkIns: true
+        }
+      })
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        employeesOutside,
+        visitorsInside,
+        timestamp: new Date()
+      }
+    });
+  } catch (err: any) {
+    console.error('Emergency roll error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch emergency roll' });
+  }
+});
+
 export default router;

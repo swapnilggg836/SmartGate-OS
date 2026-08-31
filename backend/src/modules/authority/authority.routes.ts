@@ -206,6 +206,9 @@ router.get('/my-juniors', authenticate, async (req: AuthenticatedRequest, res: R
     };
     if (connectionType) where.connectionType = String(connectionType);
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const connections = await prisma.authorityConnection.findMany({
       where,
       include: {
@@ -216,11 +219,19 @@ router.get('/my-juniors', authenticate, async (req: AuthenticatedRequest, res: R
                 department: true,
                 leaveRequests: {
                   where: { status: { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM'] } },
-                  select: { id: true, status: true }
+                  select: { id: true, status: true, totalDays: true, fromDate: true, toDate: true }
                 },
                 exitRequests: {
                   where: { status: { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM'] } },
-                  select: { id: true, status: true }
+                  select: { id: true, status: true, destination: true, exitTime: true, expectedReturnTime: true }
+                },
+                attendance: {
+                  where: { date: today },
+                  select: { status: true, checkInTime: true }
+                },
+                gateLogs: {
+                  where: { exitStatus: 'EXITED', returnStatus: 'PENDING' },
+                  select: { id: true, actualExitTime: true, expectedReturnTime: true }
                 }
               }
             }
@@ -230,7 +241,29 @@ router.get('/my-juniors', authenticate, async (req: AuthenticatedRequest, res: R
       orderBy: { createdAt: 'asc' }
     });
 
-    return res.json({ success: true, data: connections });
+    const enriched = connections.map(conn => {
+      const emp = conn.user?.employee;
+      const att = emp?.attendance?.[0];
+      const outsideLog = emp?.gateLogs?.[0];
+      const isOutside = !!outsideLog;
+      const isOverdue = isOutside && new Date() > new Date(outsideLog.expectedReturnTime);
+
+      let computedStatus = 'PRESENT';
+      if (isOutside) computedStatus = isOverdue ? 'OVERDUE' : 'OUTSIDE';
+      else if (att) computedStatus = att.status;
+
+      return {
+        ...conn,
+        computedStatus,
+        isOutside,
+        isOverdue,
+        outsideDetails: outsideLog || null,
+        pendingLeavesCount: emp?.leaveRequests?.length || 0,
+        pendingExitsCount: emp?.exitRequests?.length || 0
+      };
+    });
+
+    return res.json({ success: true, data: enriched });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to fetch juniors' });
   }

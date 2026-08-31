@@ -31,6 +31,11 @@ model User {
   delegationsFrom  TemporaryDelegation[] @relation("DelegationFrom")
   // Delegations assigned to this user (as delegate)
   delegationsTo    TemporaryDelegation[] @relation("DelegationTo")
+  // Visitor management
+  visitsHosted     VisitorVisit[]        @relation("VisitHost")
+  visitsCreated    VisitorVisit[]        @relation("VisitCreator")
+  visitorCheckIns  VisitorCheckIn[]      @relation("VisitorCheckInSecurity")
+  visitorCheckOuts VisitorCheckOut[]     @relation("VisitorCheckOutSecurity")
 
   @@index([email])
   @@index([role])
@@ -59,7 +64,8 @@ model Department {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  employees   Employee[]
+  employees     Employee[]
+  visitorVisits VisitorVisit[]
 }
 
 model Employee {
@@ -373,4 +379,166 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@index([requestId])
+}
+
+// ============================================================
+// VISITOR MANAGEMENT MODULE
+// ============================================================
+
+// Master visitor record — reused across multiple visits
+model Visitor {
+  id           String   @id @default(cuid())
+  fullName     String   @db.VarChar(200)
+  gender       String?  @db.VarChar(30)   // MALE, FEMALE, OTHER, PREFER_NOT_TO_SAY
+  mobile       String   @db.VarChar(30)
+  email        String?  @db.VarChar(191)
+  organization String?  @db.VarChar(200)
+  idType       String?  @db.VarChar(50)   // AADHAR, PAN, PASSPORT, DRIVING_LICENSE, OTHER
+  idVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  visits           VisitorVisit[]
+  groupMemberships VisitorGroupMember[]
+
+  @@index([mobile])
+  @@index([email])
+}
+
+// One visit instance — one host, one date, one purpose
+model VisitorVisit {
+  id                   String   @id @default(cuid())
+  visitId              String   @unique @db.VarChar(50)   // VIS-2026-00001
+  visitorId            String   @db.VarChar(191)          // Lead/primary visitor
+  hostUserId           String   @db.VarChar(191)          // Company user being visited
+  departmentId         String?  @db.VarChar(191)
+  purpose              String   @db.VarChar(255)
+  description          String?  @db.Text
+  visitDate            DateTime
+  expectedEntryTime    String   @db.VarChar(10)           // HH:mm
+  expectedExitTime     String   @db.VarChar(10)           // HH:mm
+  numberOfVisitors     Int      @default(1)
+  vehicleNumber        String?  @db.VarChar(50)
+  vehicleType          String?  @db.VarChar(50)
+  requiresParkingSlot  Boolean  @default(false)
+  requiresHostApproval Boolean  @default(true)
+  requiresHrApproval   Boolean  @default(false)
+  // WALK_IN | PRE_REGISTERED
+  visitType            String   @default("WALK_IN") @db.VarChar(20)
+  // PENDING_HOST | APPROVED | REJECTED | CANCELLED | WAITING | CHECKED_IN | OVERDUE | CHECKED_OUT | EXPIRED | COMPLETED
+  status               String   @default("PENDING_HOST") @db.VarChar(50)
+  createdByUserId      String   @db.VarChar(191)
+  rejectionReason      String?  @db.Text
+  hostNotes            String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  visitor       Visitor              @relation(fields: [visitorId], references: [id])
+  hostUser      User                 @relation("VisitHost", fields: [hostUserId], references: [id])
+  department    Department?          @relation(fields: [departmentId], references: [id])
+  createdByUser User                 @relation("VisitCreator", fields: [createdByUserId], references: [id])
+  groupMembers  VisitorGroupMember[]
+  visitorPass   VisitorPass?
+  checkIns      VisitorCheckIn[]
+  checkOuts     VisitorCheckOut[]
+  auditLogs     VisitorAuditLog[]
+
+  @@index([visitId])
+  @@index([visitorId])
+  @@index([hostUserId])
+  @@index([status])
+  @@index([visitDate])
+  @@index([createdByUserId])
+}
+
+// Each individual person in a group visit
+model VisitorGroupMember {
+  id        String   @id @default(cuid())
+  visitId   String   @db.VarChar(191)
+  visitorId String   @db.VarChar(191)
+  status    String   @default("PENDING") @db.VarChar(50) // PENDING, CHECKED_IN, CHECKED_OUT
+  createdAt DateTime @default(now())
+
+  visit   VisitorVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  visitor Visitor      @relation(fields: [visitorId], references: [id])
+
+  @@index([visitId])
+  @@index([visitorId])
+}
+
+// QR-based visitor pass — auto-generated when visit is APPROVED
+model VisitorPass {
+  id         String   @id @default(cuid())
+  passNumber String   @unique @db.VarChar(50)   // VP-2026-00001
+  visitId    String   @unique @db.VarChar(191)
+  qrToken    String   @unique @db.VarChar(191)  // secure opaque UUID token
+  validFrom  DateTime
+  validUntil DateTime
+  // ACTIVE | USED | EXPIRED | CANCELLED
+  status     String   @default("ACTIVE") @db.VarChar(50)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  visit     VisitorVisit      @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  checkIns  VisitorCheckIn[]
+  checkOuts VisitorCheckOut[]
+
+  @@index([qrToken])
+  @@index([passNumber])
+  @@index([status])
+}
+
+// Security logs actual visitor check-in
+model VisitorCheckIn {
+  id              String   @id @default(cuid())
+  visitId         String   @db.VarChar(191)
+  passId          String?  @db.VarChar(191)
+  actualEntryTime DateTime @default(now())
+  securityUserId  String   @db.VarChar(191)
+  gate            String?  @db.VarChar(100)
+  idVerified      Boolean  @default(false)
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  visit        VisitorVisit  @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  visitorPass  VisitorPass?  @relation(fields: [passId], references: [id])
+  securityUser User          @relation("VisitorCheckInSecurity", fields: [securityUserId], references: [id])
+
+  @@index([visitId])
+  @@index([securityUserId])
+}
+
+// Security logs actual visitor check-out
+model VisitorCheckOut {
+  id             String   @id @default(cuid())
+  visitId        String   @db.VarChar(191)
+  passId         String?  @db.VarChar(191)
+  actualExitTime DateTime @default(now())
+  securityUserId String   @db.VarChar(191)
+  gate           String?  @db.VarChar(100)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  visit        VisitorVisit  @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  visitorPass  VisitorPass?  @relation(fields: [passId], references: [id])
+  securityUser User          @relation("VisitorCheckOutSecurity", fields: [securityUserId], references: [id])
+
+  @@index([visitId])
+  @@index([securityUserId])
+}
+
+// Full audit trail for every visitor action
+model VisitorAuditLog {
+  id        String   @id @default(cuid())
+  visitId   String   @db.VarChar(191)
+  userId    String?  @db.VarChar(191)    // null for system actions
+  action    String   @db.VarChar(100)    // CREATED, APPROVED, REJECTED, CHECKED_IN, CHECKED_OUT, CANCELLED, EXTENDED, EXPIRED
+  details   String?  @db.Text
+  ipAddress String?  @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  visit VisitorVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+  @@index([action])
 }
