@@ -179,12 +179,11 @@ export function Navbar({ onMenuClick, title }: { onMenuClick: () => void; title:
 
   return (
     <header className="navbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button
           onClick={onMenuClick}
           className="navbar-icon-btn mobile-hamburger"
-          style={{ display: 'none' }}
-          aria-label="Menu"
+          aria-label="Toggle Navigation Menu"
         >
           <Menu size={18} />
         </button>
@@ -192,7 +191,7 @@ export function Navbar({ onMenuClick, title }: { onMenuClick: () => void; title:
       </div>
 
       <div className="navbar-right">
-        <Link href="/notifications" className="navbar-icon-btn">
+        <Link href="/notifications" className="navbar-icon-btn" aria-label="Notifications">
           <Bell size={16} />
           {unreadCount > 0 && <span className="notification-dot" />}
         </Link>

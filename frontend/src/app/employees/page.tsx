@@ -220,22 +220,22 @@ export default function EmployeesPage() {
 
         {/* Search and Filters */}
         <div className="card" style={{ padding: '14px 18px' }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: 260, maxWidth: 400 }}>
+          <div className="filter-bar-responsive">
+            <div style={{ position: 'relative', flex: '1 1 220px', width: '100%' }}>
               <Search size={15} style={{ position: 'absolute', left: 12, top: 11, color: 'var(--slate-400)' }} />
               <input
                 className="form-control"
                 placeholder="Search name, code, email, designation..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                style={{ paddingLeft: 36, fontSize: '0.85rem' }}
+                style={{ paddingLeft: 36, fontSize: '0.85rem', width: '100%' }}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', width: '100%', flex: '1 1 auto' }}>
               <select
                 className="form-control"
-                style={{ width: 'auto', fontSize: '0.82rem', padding: '6px 12px' }}
+                style={{ width: 'auto', flex: '1 1 150px', fontSize: '0.82rem', padding: '6px 12px' }}
                 value={selectedDept}
                 onChange={e => setSelectedDept(e.target.value)}
               >
@@ -245,13 +245,13 @@ export default function EmployeesPage() {
                 ))}
               </select>
 
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 4, flex: '1 1 auto' }}>
                 {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map(s => (
                   <button
                     key={s}
                     onClick={() => setStatusFilter(s)}
                     className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ fontSize: '0.75rem' }}
+                    style={{ fontSize: '0.75rem', flex: '1 1 auto' }}
                   >
                     {s === 'ALL' ? 'All' : s === 'ACTIVE' ? 'Active' : 'Inactive'}
                   </button>
