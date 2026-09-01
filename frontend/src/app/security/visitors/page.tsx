@@ -6,7 +6,7 @@ import { fmtDate, fmtTime, statusBadgeClass, statusLabel } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
-import { Shield, Search, CheckCircle2, XCircle, Clock, AlertTriangle, Users, UserPlus, LogIn, LogOut, QrCode, RefreshCw } from 'lucide-react';
+import { Shield, Search, CheckCircle2, XCircle, Clock, AlertTriangle, Users, UserPlus, LogIn, LogOut, QrCode, RefreshCw, MessageCircle } from 'lucide-react';
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -143,6 +143,7 @@ export default function SecurityVisitorsPage() {
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [checkInTarget, setCheckInTarget] = useState<any>(null);
   const [actioning, setActioning] = useState<string | null>(null);
+  const [showQrPoster, setShowQrPoster] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -181,8 +182,11 @@ export default function SecurityVisitorsPage() {
       <div className="space-y-4">
         <div className="page-header">
           <div className="page-header-row">
-            <div><h1>Security ? Visitor Console</h1><p style={{ marginTop: 2 }}>Today's visitor management and gate control</p></div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div><h1>Security · Visitor Console</h1><p style={{ marginTop: 2 }}>Today's visitor management and gate control</p></div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowQrPoster(true)}>
+                <QrCode size={14} /> Gate QR Poster
+              </button>
               <button className="btn btn-outline btn-sm" onClick={load}><RefreshCw size={14} /></button>
               <button className="btn btn-primary btn-sm" onClick={() => setShowWalkIn(true)}><UserPlus size={14} /> Register Walk-in</button>
             </div>
@@ -285,8 +289,33 @@ export default function SecurityVisitorsPage() {
                           </td>
                           <td><span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span></td>
                           <td>
-                            {['APPROVED', 'WAITING'].includes(v.status) && <button className="btn btn-sm" style={{ background: '#16a34a', color: 'white', fontSize: '0.75rem' }} onClick={() => setCheckInTarget(v)}><LogIn size={11} /> Check In</button>}
-                            {['CHECKED_IN', 'OVERDUE'].includes(v.status) && <button className="btn btn-sm btn-outline" style={{ fontSize: '0.75rem' }} onClick={() => checkOut(v.visitId)} disabled={actioning === v.visitId}>{actioning === v.visitId ? <Spinner size="sm" /> : <LogOut size={11} />} Check Out</button>}
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                              {['APPROVED', 'WAITING'].includes(v.status) && (
+                                <button className="btn btn-sm" style={{ background: '#16a34a', color: 'white', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setCheckInTarget(v)}>
+                                  <LogIn size={11} /> Check In
+                                </button>
+                              )}
+                              {v.visitorPass && (
+                                <button
+                                  onClick={() => {
+                                    const passUrl = `${window.location.origin}/visitor-pass/${v.visitorPass.qrToken}`;
+                                    const msg = encodeURIComponent(`Hello ${v.visitor?.fullName}!\nHere is your Visitor Entry Pass for SmartGate Campus:\nPass Number: ${v.visitorPass.passNumber}\nView Pass & QR Code:\n${passUrl}\nPlease show this at Security.`);
+                                    const cleanPhone = (v.visitor?.mobile || '').replace(/[^0-9]/g, '');
+                                    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}`, '_blank');
+                                  }}
+                                  title="Send pass on WhatsApp"
+                                  className="btn btn-sm"
+                                  style={{ background: '#25D366', color: 'white', border: 'none', padding: '3px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                >
+                                  <MessageCircle size={11} /> WhatsApp
+                                </button>
+                              )}
+                              {['CHECKED_IN', 'OVERDUE'].includes(v.status) && (
+                                <button className="btn btn-sm btn-outline" style={{ fontSize: '0.75rem' }} onClick={() => checkOut(v.visitId)} disabled={actioning === v.visitId}>
+                                  {actioning === v.visitId ? <Spinner size="sm" /> : <LogOut size={11} />} Check Out
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -301,6 +330,81 @@ export default function SecurityVisitorsPage() {
 
       <WalkInModal open={showWalkIn} onClose={() => setShowWalkIn(false)} onSuccess={() => { setShowWalkIn(false); load(); }} />
       {checkInTarget && <CheckInModal visit={checkInTarget} open={!!checkInTarget} onClose={() => setCheckInTarget(null)} onSuccess={() => { setCheckInTarget(null); load(); setVerifyResult(null); }} />}
+      <GateQrPosterModal open={showQrPoster} onClose={() => setShowQrPoster(false)} />
     </AppLayout>
+  );
+}
+
+function GateQrPosterModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [registerUrl, setRegisterUrl] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setRegisterUrl(`${window.location.origin}/visitor-register`);
+    }
+  }, []);
+
+  if (!open) return null;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Company Gate Check-in QR Poster"
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        <button className="btn btn-primary" onClick={() => window.print()}>
+          🖨️ Print Gate Poster
+        </button>
+      </>}
+    >
+      <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+        <div style={{
+          border: '3px dashed #3b82f6',
+          borderRadius: 16,
+          padding: 24,
+          background: 'linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%)',
+          boxShadow: '0 4px 16px rgba(59, 130, 246, 0.08)'
+        }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1d4ed8', marginBottom: 6 }}>
+            SmartGate OS · Gate Security
+          </div>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', margin: '0 0 6px' }}>
+            VISITOR SELF CHECK-IN
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 20px' }}>
+            Scan with your phone to request entry & receive your digital pass
+          </p>
+
+          <div style={{
+            background: 'white',
+            padding: 16,
+            borderRadius: 16,
+            display: 'inline-block',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+            marginBottom: 20
+          }}>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(registerUrl || 'http://localhost:3000/visitor-register')}`}
+              alt="Gate Registration QR"
+              style={{ width: 200, height: 200, display: 'block' }}
+            />
+          </div>
+
+          <div style={{ textAlign: 'left', background: 'white', borderRadius: 12, padding: 14, border: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#334155' }}>
+            <div style={{ fontWeight: 700, color: '#1e3a8a', marginBottom: 6 }}>Instructions for Visitors:</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+              <span>1.</span><span>Scan this QR code using your mobile phone camera.</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+              <span>2.</span><span>Fill in your details and select the employee you came to meet.</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <span>3.</span><span>Receive your approved digital pass on your phone & WhatsApp, then show it to Security.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }

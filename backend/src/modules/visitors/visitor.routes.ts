@@ -203,6 +203,221 @@ router.get('/pass/:token', async (req: Request, res: Response) => {
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch visitor pass.' }); }
 });
 
+// ?? Public: List active hosts for gate self-registration (no auth) ??????????
+router.get('/public-hosts', async (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: { in: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
+        employee: { isNot: null }
+      },
+      select: {
+        id: true,
+        role: true,
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            designation: true,
+            avatarUrl: true,
+            department: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { employee: { firstName: 'asc' } },
+      take: 50,
+    });
+
+    const formatted = users.map(u => ({
+      id: u.id,
+      name: `${u.employee?.firstName || ''} ${u.employee?.lastName || ''}`.trim(),
+      code: u.employee?.employeeCode,
+      department: u.employee?.department?.name || 'General',
+      designation: u.employee?.designation || 'Staff',
+      avatarUrl: u.employee?.avatarUrl,
+    })).filter(h => !q || h.name.toLowerCase().includes(q) || h.department.toLowerCase().includes(q) || (h.code && h.code.toLowerCase().includes(q)));
+
+    return res.json({ success: true, data: formatted });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch hosts.' });
+  }
+});
+
+// ?? Public: Visitor self-check-in at company gate (no auth) ???????????????????
+router.post('/self-register', async (req: Request, res: Response) => {
+  try {
+    const { fullName, mobile, email, organization, idType, hostUserId, purpose, numberOfVisitors, vehicleNumber } = req.body;
+
+    if (!fullName || !mobile || !hostUserId || !purpose) {
+      return res.status(400).json({ success: false, message: 'Name, Mobile, Host and Purpose are required.' });
+    }
+
+    const hostUser = await prisma.user.findUnique({
+      where: { id: hostUserId, isActive: true },
+      include: { employee: { include: { department: true } } }
+    });
+    if (!hostUser) return res.status(404).json({ success: false, message: 'Host not found or currently unavailable.' });
+
+    let visitor = await prisma.visitor.findFirst({ where: { mobile } });
+    if (!visitor) {
+      visitor = await prisma.visitor.create({
+        data: {
+          fullName,
+          mobile,
+          email: email || null,
+          organization: organization || null,
+          idType: idType || null,
+        }
+      });
+    } else {
+      visitor = await prisma.visitor.update({
+        where: { id: visitor.id },
+        data: { fullName, email: email || null, organization: organization || null }
+      });
+    }
+
+    const visitId = await generateVisitId();
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const exitHh = String(Math.min(23, now.getHours() + 2)).padStart(2, '0');
+
+    const visit = await prisma.visitorVisit.create({
+      data: {
+        visitId,
+        visitorId: visitor.id,
+        hostUserId,
+        departmentId: hostUser.employee?.departmentId || null,
+        purpose,
+        description: 'Gate Self-Check-in via Outside QR Poster',
+        visitDate: now,
+        expectedEntryTime: `${hh}:${mm}`,
+        expectedExitTime: `${exitHh}:${mm}`,
+        numberOfVisitors: Number(numberOfVisitors) || 1,
+        vehicleNumber: vehicleNumber || null,
+        visitType: 'WALK_IN',
+        status: 'PENDING_HOST',
+        requiresHostApproval: true,
+        createdByUserId: hostUserId,
+      },
+      include: VISIT_INCLUDE,
+    });
+
+    const hostName = hostUser.employee ? `${hostUser.employee.firstName} ${hostUser.employee.lastName}` : hostUser.email;
+
+    // Real-time alert to host
+    await prisma.notification.create({
+      data: {
+        userId: hostUserId,
+        title: '🚨 Visitor at Gate: Requesting Entry',
+        message: `${fullName} is at the entrance gate requesting to meet you for: "${purpose}". Tap to Approve or Reject.`,
+        type: 'ACTION_REQUIRED',
+        metadata: JSON.stringify({ visitId: visit.visitId, id: visit.id }),
+      },
+    });
+
+    emitToUser(hostUserId, 'visitor:gate_request', {
+      visitId: visit.visitId,
+      id: visit.id,
+      visitorName: fullName,
+      mobile,
+      organization: organization || 'Individual',
+      purpose,
+      time: `${hh}:${mm}`,
+      hostName,
+    });
+
+    emitToRole(UserRole.SECURITY_GUARD, 'visitor:gate_request', {
+      visitId: visit.visitId,
+      id: visit.id,
+      visitorName: fullName,
+      hostName,
+      purpose,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        visitId: visit.visitId,
+        id: visit.id,
+        status: 'PENDING_HOST',
+        visitorName: fullName,
+        hostName,
+        hostDesignation: hostUser.employee?.designation || 'Staff',
+        hostDepartment: hostUser.employee?.department?.name || 'General',
+        visitDate: now,
+      }
+    });
+  } catch (err: any) {
+    console.error('Self-register error:', err);
+    return res.status(500).json({ success: false, message: 'Self-registration failed. Please try again or ask Security.' });
+  }
+});
+
+// ?? Public: Poll visitor visit status from mobile (no auth) ???????????????????
+router.get('/public-status/:visitId', async (req: Request, res: Response) => {
+  try {
+    const { visitId } = req.params;
+    const visit = await prisma.visitorVisit.findFirst({
+      where: { OR: [{ visitId }, { id: visitId }] },
+      include: {
+        visitor: true,
+        visitorPass: true,
+        hostUser: { include: { employee: { include: { department: true } } } }
+      }
+    });
+
+    if (!visit) return res.status(404).json({ success: false, message: 'Visit record not found.' });
+
+    const hostEmp = visit.hostUser?.employee;
+    const hostName = hostEmp ? `${hostEmp.firstName} ${hostEmp.lastName}` : visit.hostUser?.email || 'Host';
+
+    let passData = null;
+    let whatsappUrl = null;
+
+    if (visit.visitorPass) {
+      passData = {
+        passNumber: visit.visitorPass.passNumber,
+        qrToken: visit.visitorPass.qrToken,
+        validFrom: visit.visitorPass.validFrom,
+        validUntil: visit.visitorPass.validUntil,
+        status: visit.visitorPass.status,
+      };
+
+      const passUrl = `${req.protocol}://${req.get('host') || 'localhost:3000'}/visitor-pass/${visit.visitorPass.qrToken}`;
+      const msg = encodeURIComponent(
+        `Hello ${visit.visitor.fullName},\nYour visitor pass for SmartGate Enterprise is APPROVED!\n` +
+        `Pass Number: ${visit.visitorPass.passNumber}\nHost: ${hostName}\n` +
+        `Show your digital pass & QR code to Security at the gate:\n${passUrl}`
+      );
+      const cleanPhone = visit.visitor.mobile.replace(/[^0-9]/g, '');
+      whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}`;
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        visitId: visit.visitId,
+        id: visit.id,
+        status: visit.status,
+        visitorName: visit.visitor.fullName,
+        hostName,
+        hostDesignation: hostEmp?.designation || 'Staff',
+        hostDepartment: hostEmp?.department?.name || 'General',
+        rejectionReason: visit.rejectionReason,
+        pass: passData,
+        whatsappUrl,
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve visit status.' });
+  }
+});
+
 // ?? Controlled host search (min safe data only) ???????????????????????????????
 router.get('/search-host', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
