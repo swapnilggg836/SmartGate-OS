@@ -284,7 +284,7 @@ export function MobileNav() {
                 </span>
               ) : null}
             </div>
-            {item.label}
+            <span className="mobile-nav-label">{item.label}</span>
           </Link>
         ))}
       </div>
