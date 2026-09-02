@@ -295,6 +295,63 @@ sequenceDiagram
 
 ---
 
+### 🚶‍♂️ 7. Visitor QR Self-Registration & Gate Approval Workflow
+
+SmartGate OS provides a contactless, secure **QR-based Visitor Management System (VMS)** that connects visitors, hosts, security guards, and administrators seamlessly:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor V as 🚶‍♂️ Visitor (Mobile)
+    actor H as 👤 Host (Employee/Manager)
+    actor S as 🛡️ Security Guard (Gate)
+    participant B as ⚙️ SmartGate Backend & DB
+    actor A as 🔴 Admin / HR
+
+    Note over V,S: STEP 1: SCAN & FILL DETAILS
+    V->>V: Scans Gate Check-in QR Poster with Phone Camera
+    V->>B: Opens Public URL /visitor-register (No Login Required)
+    V->>B: Fills name, WhatsApp/mobile, ID proof, purpose & selects Host
+    V->>B: Submits "Request Entry Permission" (Status: PENDING_HOST)
+    
+    Note over H,B: STEP 2: REAL-TIME HOST APPROVAL
+    B-->>H: Instant WebSocket & Notification Alert ("Visitor waiting at Gate")
+    V->>V: Mobile screen displays live "Waiting for Host Approval" radar
+    H->>B: Host reviews request & clicks "Approve" (Status: APPROVED)
+    B->>B: Generates Visitor Pass VP-2026-XXXXX with cryptographic QR Token
+
+    Note over V,S: STEP 3: DIGITAL PASS DISTRIBUTION
+    B-->>V: Visitor screen automatically reveals active Digital QR Pass
+    B-->>S: Real-time sync to Security Guard's "Expected / Approved" queue
+
+    Note over S,B: STEP 4: GATE ENTRY & EXIT TRACKING
+    V->>S: Presents Digital QR Pass at Security Gate
+    S->>B: Scans QR / Verifies ID & clicks "Allow Entry / Check-In"
+    B->>B: Records actualEntryTime & Gate (Status: CHECKED_IN)
+    Note over V: Visitor inside campus meeting Host
+    V->>S: Reaches Gate for departure
+    S->>B: Clicks "Mark Exit / Check-Out"
+    B->>B: Records actualExitTime & Duration (Status: CHECKED_OUT)
+
+    Note over A,B: STEP 5: AUTOMATED AUDIT & ADMIN REPORTING
+    B->>A: Full logs, timestamps & duration tracked in Admin Reports & Compliance Audit Trail
+```
+
+#### Detailed Stage Breakdown:
+1. **Public Self-Registration Kiosk (`/visitor-register`)**:
+   - Zero-authentication public mobile view designed for fast guest check-in.
+   - Comprehensive Host Directory search allows guest to find their host by Name, Employee Code, or Department.
+2. **Live Polling / Socket Status Transition**:
+   - Guest's phone polls `/api/visitors/public-status/:visitId` in real time.
+   - No manual refresh needed; transitions immediately to active pass upon host approval.
+3. **Security Gate Control (`/security/visitors`)**:
+   - Guard views live on-premise headcount, overdue exit alerts, and scanner modal.
+   - One-click check-in and check-out logs accurate atomic timestamps into MySQL.
+4. **Admin Compliance & CSV/Excel Export (`/admin/reports` & `/admin/audit`)**:
+   - Full history of all visits with entry/exit timestamps, purpose, vehicle numbers, host names, and security guard accountability.
+
+---
+
 ## 5. 📊 Summary of Master API Endpoints
 
 | Category | Endpoint | Allowed Roles | Description |
