@@ -119,21 +119,31 @@ export default function ReportsPage() {
         `"${(d.reason || '').replace(/"/g, '""')}"`
       ]);
     } else if (reportType === 'visitors') {
-      headers = ['Visit Code', 'Visitor Name', 'Organization', 'Contact', 'Host Name', 'Department', 'Purpose', 'Date', 'Expected Entry', 'Expected Exit', 'Status', 'Group Size'];
-      rows = data.map(d => [
-        d.visitId,
-        `"${d.visitor?.fullName || ''}"`,
-        `"${d.visitor?.organization || ''}"`,
-        d.visitor?.mobile || '',
-        `"${d.hostUser?.employee?.firstName || ''} ${d.hostUser?.employee?.lastName || ''}"`,
-        `"${d.department?.name || ''}"`,
-        `"${(d.purpose || '').replace(/"/g, '""')}"`,
-        fmtDate(d.visitDate),
-        d.expectedEntryTime,
-        d.expectedExitTime,
-        d.status,
-        String(d.numberOfVisitors || 1)
-      ]);
+      headers = ['Visit Code', 'Pass Number', 'Visitor Name', 'Organization', 'Contact', 'Host Name', 'Department', 'Purpose', 'Date', 'Expected Entry', 'Expected Exit', 'Actual Check-In', 'Actual Check-Out', 'Gate', 'ID Verified', 'Vehicle Number', 'Status', 'Group Size'];
+      rows = data.map(d => {
+        const checkIn = d.checkIns?.[0];
+        const checkOut = d.checkOuts?.[0];
+        return [
+          d.visitId,
+          d.visitorPass?.passNumber || '—',
+          `"${d.visitor?.fullName || ''}"`,
+          `"${d.visitor?.organization || ''}"`,
+          d.visitor?.mobile || '',
+          `"${d.hostUser?.employee?.firstName || ''} ${d.hostUser?.employee?.lastName || ''}"`,
+          `"${d.department?.name || ''}"`,
+          `"${(d.purpose || '').replace(/"/g, '""')}"`,
+          fmtDate(d.visitDate),
+          d.expectedEntryTime,
+          d.expectedExitTime,
+          checkIn?.actualEntryTime ? fmtTime(checkIn.actualEntryTime) : '—',
+          checkOut?.actualExitTime ? fmtTime(checkOut.actualExitTime) : '—',
+          checkIn?.gate || '—',
+          checkIn?.idVerified ? 'Yes' : 'No',
+          d.vehicleNumber || '—',
+          d.status,
+          String(d.numberOfVisitors || 1)
+        ];
+      });
     }
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -396,28 +406,56 @@ export default function ReportsPage() {
                     <thead>
                       <tr>
                         <th>Visit ID</th>
+                        <th>Pass No.</th>
                         <th>Visitor</th>
                         <th>Organization</th>
                         <th>Host Employee</th>
                         <th>Department</th>
                         <th>Date</th>
-                        <th>Time Window</th>
+                        <th>Schedule</th>
+                        <th>Check-In</th>
+                        <th>Check-Out</th>
                         <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.map((d: any) => (
-                        <tr key={d.id}>
-                          <td className="font-mono" style={{ color: 'var(--blue-700)', fontWeight: 700 }}>{d.visitId}</td>
-                          <td style={{ fontWeight: 600 }}>{d.visitor?.fullName}</td>
-                          <td>{d.visitor?.organization || '—'}</td>
-                          <td>{d.hostUser?.employee?.firstName} {d.hostUser?.employee?.lastName}</td>
-                          <td>{d.department?.name || '—'}</td>
-                          <td className="font-mono">{fmtDate(d.visitDate)}</td>
-                          <td className="font-mono">{d.expectedEntryTime} – {d.expectedExitTime}</td>
-                          <td><span className="badge badge-blue">{d.status}</span></td>
-                        </tr>
-                      ))}
+                      {data.map((d: any) => {
+                        const checkIn = d.checkIns?.[0];
+                        const checkOut = d.checkOuts?.[0];
+                        return (
+                          <tr key={d.id}>
+                            <td className="font-mono" style={{ color: 'var(--blue-700)', fontWeight: 700 }}>{d.visitId}</td>
+                            <td className="font-mono" style={{ fontSize: '0.75rem', fontWeight: 600 }}>{d.visitorPass?.passNumber || '—'}</td>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{d.visitor?.fullName}</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{d.visitor?.mobile}</div>
+                            </td>
+                            <td>{d.visitor?.organization || '—'}</td>
+                            <td>{d.hostUser?.employee ? `${d.hostUser.employee.firstName} ${d.hostUser.employee.lastName}` : (d.hostUser?.email || '—')}</td>
+                            <td>{d.department?.name || d.hostUser?.employee?.department?.name || '—'}</td>
+                            <td className="font-mono">{fmtDate(d.visitDate)}</td>
+                            <td className="font-mono" style={{ fontSize: '0.78rem' }}>{d.expectedEntryTime} – {d.expectedExitTime}</td>
+                            <td className="font-mono" style={{ fontSize: '0.78rem', color: checkIn?.actualEntryTime ? 'var(--green-700)' : 'var(--slate-400)' }}>
+                              {checkIn?.actualEntryTime ? fmtTime(checkIn.actualEntryTime) : '—'}
+                              {checkIn?.gate && <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)', display: 'block' }}>{checkIn.gate}</span>}
+                            </td>
+                            <td className="font-mono" style={{ fontSize: '0.78rem', color: checkOut?.actualExitTime ? 'var(--slate-700)' : 'var(--slate-400)' }}>
+                              {checkOut?.actualExitTime ? fmtTime(checkOut.actualExitTime) : '—'}
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                d.status === 'CHECKED_IN' ? 'badge-success' :
+                                d.status === 'COMPLETED' || d.status === 'CHECKED_OUT' ? 'badge-blue' :
+                                d.status === 'OVERDUE' ? 'badge-danger' :
+                                d.status === 'APPROVED' ? 'badge-purple' :
+                                d.status === 'REJECTED' ? 'badge-danger' : 'badge-amber'
+                              }`}>
+                                {d.status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </>
                 )}
