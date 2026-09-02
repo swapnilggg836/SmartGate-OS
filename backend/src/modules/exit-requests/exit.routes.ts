@@ -147,9 +147,10 @@ async function issueGatePass(exitRequestId: string, tx?: any) {
 // GET /api/exit-requests
 router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { status, employeeId, date } = req.query;
+    const { status, employeeId, date, startDate, endDate, departmentId } = req.query;
     const role = req.user!.role;
     const userEmployeeId = req.user!.employeeId;
+    const userId = req.user!.userId;
 
     const where: any = {};
 
@@ -160,24 +161,43 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
     if (role === UserRole.EMPLOYEE) {
       where.employeeId = userEmployeeId;
     } else if (role === UserRole.MANAGER) {
-      const managerEmp = await prisma.employee.findUnique({
-        where: { id: userEmployeeId }
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
       });
-      if (managerEmp) {
-        where.employee = { departmentId: managerEmp.departmentId };
-      }
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
     } else if (employeeId) {
       where.employeeId = String(employeeId);
     }
 
-    if (date) {
+    // Department filter (admin/hr/gm only)
+    if (departmentId && String(departmentId) !== 'ALL' && role !== UserRole.EMPLOYEE && role !== UserRole.MANAGER) {
+      const deptEmps = await prisma.employee.findMany({
+        where: { departmentId: String(departmentId) },
+        select: { id: true }
+      });
+      where.employeeId = { in: deptEmps.map(e => e.id) };
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      where.exitDate = {};
+      if (startDate) where.exitDate.gte = new Date(String(startDate));
+      if (endDate) {
+        const end = new Date(String(endDate));
+        end.setDate(end.getDate() + 1);
+        where.exitDate.lt = end;
+      }
+    } else if (date) {
       const queryDate = new Date(String(date));
       const nextDate = new Date(queryDate);
       nextDate.setDate(queryDate.getDate() + 1);
-      where.exitDate = {
-        gte: queryDate,
-        lt: nextDate
-      };
+      where.exitDate = { gte: queryDate, lt: nextDate };
     }
 
     const requests = await prisma.exitRequest.findMany({
@@ -212,16 +232,26 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
   }
 });
 
-// GET /api/exit-requests/pending (Manager sees pending from their dept)
+// GET /api/exit-requests/pending (Manager sees pending from their connected direct reports)
 router.get('/pending', authenticate, requireRoles(UserRole.MANAGER, UserRole.HR, UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const role = req.user!.role;
-    const userEmployeeId = req.user!.employeeId;
+    const userId = req.user!.userId;
     const where: any = { status: { in: ['PENDING_MANAGER', 'PENDING'] } };
-    if (role === UserRole.MANAGER && userEmployeeId) {
-      const managerEmp = await prisma.employee.findUnique({ where: { id: userEmployeeId } });
-      if (managerEmp) where.employee = { departmentId: managerEmp.departmentId };
+
+    if (role === UserRole.MANAGER) {
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
     }
+
     const requests = await prisma.exitRequest.findMany({
       where,
       include: { employee: { include: { department: true, user: { select: { email: true } } } }, approvals: { include: { approver: { include: { employee: true } } } } },
@@ -231,11 +261,28 @@ router.get('/pending', authenticate, requireRoles(UserRole.MANAGER, UserRole.HR,
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch pending requests' }); }
 });
 
-// GET /api/exit-requests/pending-hr (HR sees manager-approved requests)
+// GET /api/exit-requests/pending-hr (HR sees manager-approved requests from connected juniors)
 router.get('/pending-hr', authenticate, requireRoles(UserRole.HR, UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const role = req.user!.role;
+    const userId = req.user!.userId;
+    const where: any = { status: 'PENDING_HR' };
+
+    if (role === UserRole.HR) {
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
+    }
+
     const requests = await prisma.exitRequest.findMany({
-      where: { status: 'PENDING_HR' },
+      where,
       include: { employee: { include: { department: true, user: { select: { email: true } } } }, approvals: { include: { approver: { include: { employee: true } } } } },
       orderBy: { createdAt: 'desc' }
     });

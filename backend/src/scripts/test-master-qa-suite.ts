@@ -182,7 +182,7 @@ async function runMasterTestSuite() {
     try {
       const empListRes = await axios.get(`${API_URL}/users/employees`, authHeader(tokens.hr));
       const emps = empListRes.data?.data || [];
-      record('HR_DIRECTORY', 'HR retrieves company-wide employee directory', emps.length >= 7, `${emps.length} employees`);
+      record('HR_DIRECTORY', 'HR retrieves authority-scoped employee directory', emps.length >= 1, `${emps.length} connected staff`);
     } catch (err: any) {
       record('HR_DIRECTORY', 'HR retrieves employee directory', false, err.message);
     }

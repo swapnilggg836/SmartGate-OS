@@ -17,28 +17,62 @@ import {
 // =============================================
 function EmployeeDashboard() {
   const { user } = useAuth();
-  const emp = user!.employee!;
+  const emp = user?.employee;
 
-  const [data, setData] = useState<any>({ balances: [], exitRequests: [], leaveRequests: [], activePass: null });
+  const [data, setData] = useState<any>({
+    balances: [],
+    exitRequests: [],
+    leaveRequests: [],
+    activePass: null,
+    totalExits: 0,
+    totalLeavesUsed: 0,
+    passesCount: 0,
+    attendanceRate: 100
+  });
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
 
-  useEffect(() => {
+  const loadData = React.useCallback(() => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
     Promise.all([
       api.get('/leave/balances'),
-      api.get('/exit-requests?limit=5'),
-      api.get('/leave/requests?limit=5'),
-      api.get('/gate-passes/my-active').catch(() => ({ data: { data: null } }))
-    ]).then(([bal, exit, leave, pass]) => {
+      api.get('/exit-requests'),
+      api.get('/leave/requests'),
+      api.get('/gate-passes/my-active').catch(() => ({ data: { data: null } })),
+      api.get('/gate-passes').catch(() => ({ data: { data: [] } })),
+      api.get(`/attendance?month=${month}&year=${year}`).catch(() => ({ data: { data: [] } }))
+    ]).then(([bal, exit, leave, activePass, passes, att]) => {
+      const balancesList = bal.data?.data || [];
+      const exitList = exit.data?.data || [];
+      const leaveList = leave.data?.data || [];
+      const passList = passes.data?.data || [];
+      const attList = att.data?.data || [];
+
+      const totalLeavesUsed = balancesList.reduce((sum: number, b: any) => sum + (b.usedDays || 0), 0);
+      const presentCount = attList.filter((a: any) => a.status === 'PRESENT').length;
+      const totalAttDays = attList.length;
+      const attendanceRate = totalAttDays > 0 ? Math.round((presentCount / totalAttDays) * 100) : 100;
+
       setData({
-        balances: bal.data?.data || [],
-        exitRequests: exit.data?.data || [],
-        leaveRequests: leave.data?.data || [],
-        activePass: pass.data?.data
+        balances: balancesList,
+        exitRequests: exitList,
+        leaveRequests: leaveList,
+        activePass: activePass.data?.data,
+        totalExits: exitList.length,
+        totalLeavesUsed,
+        passesCount: passList.length,
+        attendanceRate
       });
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (loading) return <PageLoader />;
 
@@ -49,9 +83,9 @@ function EmployeeDashboard() {
         <div className="card-body" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h2 style={{ marginBottom: 2 }}>Welcome back, {emp.firstName}! 👋</h2>
+              <h2 style={{ marginBottom: 2 }}>Welcome back, {emp?.firstName || 'User'}! 👋</h2>
               <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem' }}>
-                {emp.employeeCode} · {emp.designation} · {emp.departmentName}
+                {emp?.employeeCode} · {emp?.designation} · {emp?.departmentName || '—'}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -78,6 +112,43 @@ function EmployeeDashboard() {
           </div>
         </div>
       )}
+
+      {/* Employee Performance & Action Activity Scorecard */}
+      <div>
+        <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TrendingUp size={16} style={{ color: 'var(--blue-700)' }} /> My Activity & Action Summary
+        </h3>
+        <div className="grid-4">
+          <div className="stat-card">
+            <div className="stat-card-icon blue"><Clock size={20} /></div>
+            <div>
+              <div className="stat-card-value">{data.totalExits}</div>
+              <div className="stat-card-label">Exit Permissions Applied</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-icon amber"><Calendar size={20} /></div>
+            <div>
+              <div className="stat-card-value">{data.totalLeavesUsed}</div>
+              <div className="stat-card-label">Approved Leave Days Taken</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-icon green"><QrCode size={20} /></div>
+            <div>
+              <div className="stat-card-value">{data.passesCount}</div>
+              <div className="stat-card-label">Gate Passes Issued</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-icon purple"><TrendingUp size={20} /></div>
+            <div>
+              <div className="stat-card-value">{data.attendanceRate}%</div>
+              <div className="stat-card-label">Monthly Attendance Score</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Leave Balances */}
       <div>
@@ -165,8 +236,8 @@ function EmployeeDashboard() {
       </div>
 
       {/* Modals */}
-      <ExitRequestModal open={showExitModal} onClose={() => setShowExitModal(false)} onSuccess={() => { setShowExitModal(false); window.location.reload(); }} />
-      <LeaveRequestModal open={showLeaveModal} onClose={() => setShowLeaveModal(false)} onSuccess={() => { setShowLeaveModal(false); window.location.reload(); }} />
+      <ExitRequestModal open={showExitModal} onClose={() => setShowExitModal(false)} onSuccess={() => { setShowExitModal(false); loadData(); }} />
+      <LeaveRequestModal open={showLeaveModal} onClose={() => setShowLeaveModal(false)} onSuccess={() => { setShowLeaveModal(false); loadData(); }} />
     </div>
   );
 }
@@ -176,7 +247,7 @@ function EmployeeDashboard() {
 // =============================================
 function ManagerDashboard() {
   const { user } = useAuth();
-  const emp = user!.employee!;
+  const emp = user?.employee;
   const [pending, setPending] = useState<any[]>([]);
   const [stats, setStats] = useState({ exits: 0, leaves: 0, approved: 0, rejected: 0 });
   const [loading, setLoading] = useState(true);
@@ -219,8 +290,8 @@ function ManagerDashboard() {
     <div className="space-y-4">
       <div className="card">
         <div className="card-body">
-          <h2>Welcome, {emp.firstName}!</h2>
-          <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 2 }}>{emp.designation} · {emp.departmentName}</p>
+          <h2>Welcome, {emp?.firstName || 'Manager'}!</h2>
+          <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 2 }}>{emp?.designation || 'Manager'} · {emp?.departmentName || '—'}</p>
         </div>
       </div>
 
@@ -327,7 +398,7 @@ function ManagerDashboard() {
 // =============================================
 function HRDashboard() {
   const { user } = useAuth();
-  const emp = user!.employee!;
+  const emp = user?.employee;
   const [pending, setPending] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -370,7 +441,7 @@ function HRDashboard() {
     <div className="space-y-4">
       <div className="card">
         <div className="card-body">
-          <h2>HR Dashboard — Welcome, {emp.firstName}!</h2>
+          <h2>HR Dashboard — Welcome, {emp?.firstName || 'HR'}!</h2>
           <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 2 }}>Human Resources · Second-level approval authority</p>
         </div>
       </div>

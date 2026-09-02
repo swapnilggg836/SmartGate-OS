@@ -13,8 +13,86 @@ const verifyPassSchema = z.object({
   query: z.string().min(1).optional(),       // alias for identifier
 }).refine(d => d.identifier || d.query, { message: 'identifier or query required' });
 
-// GET /api/gate-passes/today (Security / HR / Admin)
-router.get('/today', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER), async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/gate-passes (Dynamic Scoped List for all roles)
+router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { status, employeeId, date } = req.query;
+    const role = req.user!.role;
+    const userEmployeeId = req.user!.employeeId;
+    const userId = req.user!.userId;
+
+    const where: any = {};
+
+    if (status) {
+      where.status = String(status);
+    }
+
+    if (role === UserRole.EMPLOYEE) {
+      where.employeeId = userEmployeeId;
+    } else if (role === UserRole.MANAGER) {
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: juniorUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
+    } else if (role === UserRole.HR) {
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: juniorUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
+    } else if (employeeId) {
+      where.employeeId = String(employeeId);
+    }
+
+    if (date) {
+      const queryDate = new Date(String(date));
+      const nextDate = new Date(queryDate);
+      nextDate.setDate(queryDate.getDate() + 1);
+      where.createdAt = { gte: queryDate, lt: nextDate };
+    }
+
+    const passes = await prisma.gatePass.findMany({
+      where,
+      include: {
+        employee: {
+          include: { department: true }
+        },
+        exitRequest: {
+          include: {
+            approvals: {
+              include: { approver: { include: { employee: true } } }
+            }
+          }
+        },
+        gateLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.json({ success: true, data: passes });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch gate passes' });
+  }
+});
+
+
+// GET /api/gate-passes/today (Security / HR / Admin / Manager / GM)
+router.get('/today', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER, 'GM' as any), async (req: AuthenticatedRequest, res: Response) => {
+
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

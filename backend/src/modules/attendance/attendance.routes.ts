@@ -18,13 +18,21 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
     // Role-based data visibility
     if (role === UserRole.EMPLOYEE) {
       where.employeeId = userEmployeeId; // Own data only
-    } else if (role === UserRole.MANAGER) {
-      // Manager sees own department only
-      const managerEmp = await prisma.employee.findUnique({ where: { id: userEmployeeId! } });
-      if (managerEmp) where.employee = { departmentId: managerEmp.departmentId };
-      if (employeeId) where.employeeId = String(employeeId); // Can filter by specific employee
+    } else if (role === UserRole.MANAGER || role === UserRole.HR) {
+      // Manager/HR sees connected team members + self
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: req.user!.userId, status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.employeeId = { in: teamEmps.map(e => e.id) };
+      if (employeeId) where.employeeId = String(employeeId);
     } else {
-      // HR and Super Admin see all — can optionally filter by employeeId
+      // Super Admin sees all — can optionally filter by employeeId
       if (employeeId) where.employeeId = String(employeeId);
     }
 
@@ -56,7 +64,7 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
   }
 });
 
-// GET /api/attendance/summary — today's live headcount
+// GET /api/attendance/summary — today's live headcount or personal stats
 router.get('/summary', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const role = req.user!.role;
@@ -64,15 +72,54 @@ router.get('/summary', authenticate, async (req: AuthenticatedRequest, res: Resp
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const deptFilter: any = {};
-    if (role === UserRole.MANAGER && userEmployeeId) {
-      const managerEmp = await prisma.employee.findUnique({ where: { id: userEmployeeId } });
-      if (managerEmp) deptFilter.departmentId = managerEmp.departmentId;
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    if (role === UserRole.EMPLOYEE && userEmployeeId) {
+      const monthlyAttendance = await prisma.attendance.findMany({
+        where: {
+          employeeId: userEmployeeId,
+          date: { gte: startOfMonth, lte: endOfToday }
+        }
+      });
+
+      const presentCount = monthlyAttendance.filter(a => a.status === 'PRESENT').length;
+      const onExitCount = monthlyAttendance.filter(a => a.status === 'ON_EXIT_PERMISSION').length;
+      const onLeaveCount = monthlyAttendance.filter(a => a.status === 'ON_LEAVE').length;
+      const absentCount = monthlyAttendance.filter(a => a.status === 'ABSENT').length;
+      const totalDays = now.getDate();
+
+      return res.json({
+        success: true,
+        data: {
+          isPersonal: true,
+          totalEmployees: totalDays,
+          presentCount,
+          onExitCount,
+          onLeaveCount,
+          absentCount
+        }
+      });
     }
 
-    const totalEmployees = await prisma.employee.count({ where: deptFilter });
+    const teamFilter: any = {};
+    if (role === UserRole.MANAGER || role === UserRole.HR) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: req.user!.userId, status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      teamFilter.id = { in: teamEmps.map(e => e.id) };
+    }
+
+    const totalEmployees = await prisma.employee.count({ where: teamFilter });
     const todayAttendance = await prisma.attendance.findMany({
-      where: { date: today, ...(deptFilter.departmentId ? { employee: { departmentId: deptFilter.departmentId } } : {}) }
+      where: { date: today, ...(teamFilter.id ? { employeeId: teamFilter.id } : {}) }
     });
 
     const presentCount = todayAttendance.filter(a => a.status === 'PRESENT').length;
@@ -80,9 +127,75 @@ router.get('/summary', authenticate, async (req: AuthenticatedRequest, res: Resp
     const onLeaveCount = todayAttendance.filter(a => a.status === 'ON_LEAVE').length;
     const absentCount = Math.max(0, totalEmployees - (presentCount + onExitCount + onLeaveCount));
 
-    return res.json({ success: true, data: { totalEmployees, presentCount, onExitCount, onLeaveCount, absentCount } });
+    return res.json({ success: true, data: { isPersonal: false, totalEmployees, presentCount, onExitCount, onLeaveCount, absentCount } });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to fetch summary' });
+  }
+});
+
+// GET /api/attendance/department-colleagues — View live status of department teammates
+router.get('/department-colleagues', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userEmployeeId = req.user!.employeeId;
+    if (!userEmployeeId) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const currentEmp = await prisma.employee.findUnique({
+      where: { id: userEmployeeId },
+      include: { department: true }
+    });
+
+    if (!currentEmp?.departmentId) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const colleagues = await prisma.employee.findMany({
+      where: {
+        departmentId: currentEmp.departmentId,
+        id: { not: currentEmp.id },
+        user: { isActive: true }
+      },
+      include: {
+        department: true,
+        user: { select: { email: true, role: true } },
+        attendance: {
+          where: { date: today },
+          select: { status: true, checkInTime: true, checkOutTime: true }
+        },
+        gateLogs: {
+          where: { exitStatus: 'EXITED', returnStatus: 'PENDING' },
+          select: { id: true }
+        }
+      },
+      orderBy: { firstName: 'asc' }
+    });
+
+    const formatted = colleagues.map(c => {
+      const att = c.attendance[0];
+      const isOutside = c.gateLogs.length > 0;
+      let status = isOutside ? 'ON_EXIT_PERMISSION' : (att?.status || 'ABSENT');
+
+      return {
+        id: c.id,
+        employeeCode: c.employeeCode,
+        name: `${c.firstName} ${c.lastName}`,
+        designation: c.designation,
+        email: c.user?.email,
+        department: c.department?.name,
+        avatarUrl: c.avatarUrl,
+        todayStatus: status,
+        checkInTime: att?.checkInTime || null,
+        checkOutTime: att?.checkOutTime || null
+      };
+    });
+
+    return res.json({ success: true, data: formatted });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch department colleagues' });
   }
 });
 
@@ -99,9 +212,17 @@ router.get('/monthly-summary', authenticate, requireRoles(UserRole.MANAGER, User
     const endDate = new Date(y, m + 1, 1);
 
     const empWhere: any = {};
-    if (role === UserRole.MANAGER && userEmployeeId) {
-      const managerEmp = await prisma.employee.findUnique({ where: { id: userEmployeeId } });
-      if (managerEmp) empWhere.departmentId = managerEmp.departmentId;
+    if (role === UserRole.MANAGER || role === UserRole.HR) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: req.user!.userId, status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      empWhere.id = { in: teamEmps.map(e => e.id) };
     }
 
     const employees = await prisma.employee.findMany({

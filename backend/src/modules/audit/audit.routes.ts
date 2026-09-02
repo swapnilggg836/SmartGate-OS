@@ -6,8 +6,9 @@ import { UserRole } from '@smart-gate/types';
 
 const router = Router();
 
-// GET /api/audit-logs (Admin / HR)
-router.get('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), async (req: AuthenticatedRequest, res: Response) => {
+// GET /api/audit-logs (Admin / HR / GM)
+router.get('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, 'GM' as any), async (req: AuthenticatedRequest, res: Response) => {
+
   try {
     const { action, entity, search } = req.query;
 

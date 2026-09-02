@@ -22,11 +22,52 @@ const returnLogSchema = z.object({
 });
 
 // GET /api/gate-logs
-router.get('/', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER), async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER, 'GM' as any), async (req: AuthenticatedRequest, res: Response) => {
+
   try {
-    const { status, date } = req.query;
+    const { status, date, startDate, endDate, departmentId } = req.query;
+    const role = req.user!.role;
+    const userId = req.user!.userId;
+    const userEmployeeId = req.user!.employeeId;
 
     const where: any = {};
+
+    if (role === UserRole.MANAGER) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.employeeId = { in: teamEmps.map(e => e.id) };
+    } else if (role === UserRole.HR) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.employeeId = { in: teamEmps.map(e => e.id) };
+    }
+
+    // Filter by department (via employee join)
+    if (departmentId && String(departmentId) !== 'ALL') {
+      const deptEmps = await prisma.employee.findMany({
+        where: { departmentId: String(departmentId) },
+        select: { id: true }
+      });
+      const deptEmpIds = deptEmps.map(e => e.id);
+      where.employeeId = where.employeeId
+        ? { in: (where.employeeId.in || []).filter((id: string) => deptEmpIds.includes(id)) }
+        : { in: deptEmpIds };
+    }
+
     if (status) {
       where.OR = [
         { exitStatus: String(status) },
@@ -34,14 +75,20 @@ router.get('/', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR,
       ];
     }
 
-    if (date) {
+    // Date range filter (startDate/endDate takes priority over single date)
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(String(startDate));
+      if (endDate) {
+        const end = new Date(String(endDate));
+        end.setDate(end.getDate() + 1);
+        where.createdAt.lt = end;
+      }
+    } else if (date) {
       const queryDate = new Date(String(date));
       const nextDate = new Date(queryDate);
       nextDate.setDate(queryDate.getDate() + 1);
-      where.createdAt = {
-        gte: queryDate,
-        lt: nextDate
-      };
+      where.createdAt = { gte: queryDate, lt: nextDate };
     }
 
     const logs = await prisma.gateLog.findMany({
@@ -72,7 +119,8 @@ router.get('/', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR,
 });
 
 // GET /api/gate-logs/today
-router.get('/today', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER), async (req: AuthenticatedRequest, res: Response) => {
+router.get('/today', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.MANAGER, 'GM' as any), async (req: AuthenticatedRequest, res: Response) => {
+
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

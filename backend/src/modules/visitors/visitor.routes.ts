@@ -564,7 +564,80 @@ router.post('/walk-in', authenticate, requireRoles(UserRole.SECURITY_GUARD, User
   }
 });
 
-// ?? GET /api/visitors/my-visits ???????????????????????????????????????????????
+// GET /api/visitors (Scoped by AuthorityConnection for Manager/HR, all for Admin/Security)
+router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const role = req.user!.role;
+    const userId = req.user!.userId;
+    const { status, date } = req.query;
+
+    const where: any = {};
+
+    if (role === UserRole.MANAGER) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      where.OR = [
+        { hostUserId: { in: [...connectedUserIds, userId] } },
+        { createdByUserId: userId }
+      ];
+    } else if (role === UserRole.HR) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      where.OR = [
+        { hostUserId: { in: [...connectedUserIds, userId] } },
+        { createdByUserId: userId }
+      ];
+    }
+
+    if (status) where.status = String(status);
+    if (date) {
+      const d = new Date(String(date));
+      const d2 = new Date(d);
+      d2.setDate(d.getDate() + 1);
+      where.visitDate = { gte: d, lt: d2 };
+    }
+
+    const visits = await prisma.visitorVisit.findMany({
+      where,
+      include: VISIT_INCLUDE,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.json({ success: true, data: visits });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch visitors.' });
+  }
+});
+
+// GET /api/visitors/security/today
+router.get('/security/today', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    const visits = await prisma.visitorVisit.findMany({
+      where: {
+        visitDate: { gte: today, lt: tomorrow }
+      },
+      include: VISIT_INCLUDE,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.json({ success: true, data: visits });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch today visitors.' });
+  }
+});
+
+// GET /api/visitors/my-visits
 router.get('/my-visits', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.userId;

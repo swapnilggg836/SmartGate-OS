@@ -116,6 +116,55 @@ router.post('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), 
       });
     }
 
+    // Auto-connect Department Reporting Manager if creating an EMPLOYEE
+    try {
+      if (role === UserRole.EMPLOYEE) {
+        const deptManager = await prisma.user.findFirst({
+          where: {
+            role: UserRole.MANAGER,
+            isActive: true,
+            id: { not: newUser.id },
+            employee: { departmentId }
+          }
+        });
+
+        if (deptManager) {
+          await prisma.authorityConnection.create({
+            data: {
+              userId: newUser.id,
+              authorityUserId: deptManager.id,
+              connectionType: 'REPORTING_MANAGER',
+              status: 'ACTIVE',
+              startDate: new Date()
+            }
+          });
+          await prisma.employee.update({
+            where: { id: newUser.employee!.id },
+            data: { managerId: deptManager.id }
+          });
+        }
+      }
+    } catch (authErr) {
+      console.warn('Auto-assign manager warning:', authErr);
+    }
+
+    // Auto-initialize Today's Attendance Record
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      await prisma.attendance.create({
+        data: {
+          employeeId: newUser.employee!.id,
+          date: today,
+          status: 'PRESENT',
+          checkInTime: new Date(),
+          notes: 'Auto-registered upon account creation'
+        }
+      });
+    } catch (attErr) {
+      console.warn('Auto-initialize attendance warning:', attErr);
+    }
+
     await logAudit({
       userId: req.user!.userId,
       action: 'USER_CREATED',
@@ -132,12 +181,40 @@ router.post('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), 
   }
 });
 
-// GET /api/employees
+// GET /api/employees (Scoped by AuthorityConnection for Manager/HR, all for Super Admin)
 router.get('/employees', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { departmentId, search } = req.query;
+    const role = req.user!.role;
+    const userId = req.user!.userId;
+    const userEmployeeId = req.user!.employeeId;
 
     const where: any = {};
+
+    if (role === UserRole.MANAGER) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.id = { in: teamEmps.map(e => e.id) };
+    } else if (role === UserRole.HR) {
+      const connectedConns = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const connectedUserIds = connectedConns.map(c => c.userId);
+      const teamEmps = await prisma.employee.findMany({
+        where: { OR: [{ userId: { in: connectedUserIds } }, { id: userEmployeeId! }] },
+        select: { id: true }
+      });
+      where.id = { in: teamEmps.map(e => e.id) };
+    }
+
     if (departmentId) {
       where.departmentId = String(departmentId);
     }

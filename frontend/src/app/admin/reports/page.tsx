@@ -28,17 +28,23 @@ export default function ReportsPage() {
   const fetchReports = async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      if (selectedDept !== 'ALL') params.append('departmentId', selectedDept);
+      const query = params.toString() ? `?${params.toString()}` : '';
+
       if (reportType === 'gate-logs') {
-        const res = await api.get('/gate-logs');
+        const res = await api.get(`/gate-logs${query}`);
         setData(res.data?.data || []);
       } else if (reportType === 'leave') {
-        const res = await api.get('/leave/requests');
+        const res = await api.get(`/leave/requests${query}`);
         setData(res.data?.data || []);
       } else if (reportType === 'exit') {
-        const res = await api.get('/exit-requests');
+        const res = await api.get(`/exit-requests${query}`);
         setData(res.data?.data || []);
       } else if (reportType === 'visitors') {
-        const res = await api.get('/visitors/security/today');
+        const res = await api.get(`/visitors${query}`);
         setData(res.data?.data || []);
       }
     } catch (err) {
@@ -56,6 +62,7 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchReports();
   }, [reportType]);
+
 
   const downloadCSV = () => {
     if (data.length === 0) return;
@@ -192,13 +199,79 @@ export default function ReportsPage() {
           ))}
         </div>
 
+        {/* Dynamic Filter Bar */}
+        <div className="card" style={{ padding: '12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Filter size={14} style={{ color: 'var(--slate-500)' }} />
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--slate-600)' }}>Filter:</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>From</label>
+              <input
+                type="date"
+                className="form-control"
+                style={{ padding: '5px 10px', fontSize: '0.8125rem', width: 145 }}
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>To</label>
+              <input
+                type="date"
+                className="form-control"
+                style={{ padding: '5px 10px', fontSize: '0.8125rem', width: 145 }}
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>Dept</label>
+              <select
+                className="form-control"
+                style={{ padding: '5px 10px', fontSize: '0.8125rem', width: 160 }}
+                value={selectedDept}
+                onChange={e => setSelectedDept(e.target.value)}
+              >
+                <option value="ALL">All Departments</option>
+                {departments.map((d: any) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={fetchReports}
+              disabled={loading}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <RefreshCw size={13} /> Apply Filters
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() - 30);
+                setStartDate(d.toISOString().split('T')[0]);
+                setEndDate(new Date().toISOString().split('T')[0]);
+                setSelectedDept('ALL');
+                setTimeout(fetchReports, 0);
+              }}
+              style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
         {/* Table Preview */}
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">
               <FileSpreadsheet size={16} /> Preview Report ({data.length} records)
             </h3>
-            <span className="badge badge-blue">Least-Privilege Scoped</span>
+            <span className="badge badge-blue">Live Filtered Data</span>
           </div>
 
           {loading ? (

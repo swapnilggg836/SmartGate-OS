@@ -30,22 +30,38 @@ export default function ApprovalsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const isHrOrAdmin = ['HR', 'SUPER_ADMIN'].includes(role);
-      const calls = [
-        api.get('/exit-requests/pending').catch(() => ({ data: { data: [] } })),
-        api.get('/leave/requests/pending').catch(() => ({ data: { data: [] } })),
-      ];
-      if (isHrOrAdmin) {
-        calls.push(api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } })));
-        calls.push(api.get('/leave/requests/pending-hr').catch(() => ({ data: { data: [] } })));
+      let exitList: any[] = [];
+      let leaveList: any[] = [];
+
+      if (role === 'MANAGER') {
+        const [eRes, lRes] = await Promise.all([
+          api.get('/exit-requests/pending').catch(() => ({ data: { data: [] } })),
+          api.get('/leave/requests/pending').catch(() => ({ data: { data: [] } })),
+        ]);
+        exitList = eRes.data?.data || [];
+        leaveList = lRes.data?.data || [];
+      } else if (role === 'HR') {
+        const [eRes, lRes] = await Promise.all([
+          api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } })),
+          api.get('/leave/requests/pending-hr').catch(() => ({ data: { data: [] } })),
+        ]);
+        exitList = eRes.data?.data || [];
+        leaveList = lRes.data?.data || [];
+      } else {
+        // SUPER_ADMIN or GM
+        const [e1, l1, e2, l2] = await Promise.all([
+          api.get('/exit-requests/pending').catch(() => ({ data: { data: [] } })),
+          api.get('/leave/requests/pending').catch(() => ({ data: { data: [] } })),
+          api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } })),
+          api.get('/leave/requests/pending-hr').catch(() => ({ data: { data: [] } }))
+        ]);
+        exitList = [...(e1.data?.data || []), ...(e2.data?.data || [])];
+        leaveList = [...(l1.data?.data || []), ...(l2.data?.data || [])];
       }
-      const results = await Promise.all(calls);
-      const exitAll = [...(results[0].data?.data || []), ...(results[2]?.data?.data || [])];
-      const leaveAll = [...(results[1].data?.data || []), ...(results[3]?.data?.data || [])];
-      // Deduplicate by id
+
       const dedup = (arr: any[]) => arr.filter((v, i, a) => a.findIndex(x => x.id === v.id) === i);
-      setExitRequests(dedup(exitAll));
-      setLeaveRequests(dedup(leaveAll));
+      setExitRequests(dedup(exitList));
+      setLeaveRequests(dedup(leaveList));
     } catch { }
     finally { setLoading(false); }
   }, [role]);

@@ -6,9 +6,11 @@ import { useAuth } from '@/context/AuthContext';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader } from '@/components/ui/Spinner';
 import { fmtDate, fmtTime, statusBadgeClass, statusLabel } from '@/lib/utils';
-import { Calendar, Users, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Users, TrendingUp, ChevronLeft, ChevronRight, UserCheck } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+type ViewType = 'records' | 'monthly' | 'colleagues';
 
 export default function AttendancePage() {
   const { user } = useAuth();
@@ -18,10 +20,11 @@ export default function AttendancePage() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [view, setView] = useState<'records' | 'monthly'>(isSenior ? 'monthly' : 'records');
+  const [view, setView] = useState<ViewType>(isSenior ? 'monthly' : 'records');
 
   const [records, setRecords] = useState<any[]>([]);
   const [monthly, setMonthly] = useState<any[]>([]);
+  const [colleagues, setColleagues] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,8 +43,15 @@ export default function AttendancePage() {
         const mRes = await api.get(`/attendance/monthly-summary?month=${month}&year=${year}`);
         setMonthly(Array.isArray(mRes.data?.data) ? mRes.data.data : []);
       }
-    } catch { setRecords([]); }
-    finally { setLoading(false); }
+
+      // Fetch department colleagues live status
+      const colRes = await api.get('/attendance/department-colleagues');
+      setColleagues(Array.isArray(colRes.data?.data) ? colRes.data.data : []);
+    } catch { 
+      setRecords([]); 
+    } finally { 
+      setLoading(false); 
+    }
   }, [month, year, isSenior]);
 
   useEffect(() => { load(); }, [load]);
@@ -51,6 +61,8 @@ export default function AttendancePage() {
 
   if (loading) return <AppLayout><PageLoader /></AppLayout>;
 
+  const isPersonal = summary?.isPersonal;
+
   return (
     <AppLayout>
       <div className="space-y-4">
@@ -58,18 +70,18 @@ export default function AttendancePage() {
           <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Calendar size={22} style={{ color: 'var(--blue-700)' }} /> Attendance
           </h1>
-          <p>{isSenior ? `Monthly attendance overview — ${MONTHS[month-1]} ${year}` : 'Your personal attendance records'}</p>
+          <p>{isSenior ? `Monthly attendance overview — ${MONTHS[month-1]} ${year}` : 'Your personal attendance records & team status'}</p>
         </div>
 
         {/* Summary Cards */}
         {summary && (
           <div className="stats-grid">
             {[
-              { label: 'Total Employees', value: summary.totalEmployees, color: 'var(--blue-600)' },
-              { label: 'Present Today', value: summary.presentCount, color: '#16a34a' },
-              { label: 'On Exit Permission', value: summary.onExitCount, color: '#d97706' },
-              { label: 'On Leave', value: summary.onLeaveCount, color: '#7c3aed' },
-              { label: 'Absent', value: summary.absentCount, color: '#dc2626' }
+              { label: isPersonal ? 'Days Elapsed (This Month)' : 'Total Employees', value: summary.totalEmployees, color: 'var(--blue-600)' },
+              { label: isPersonal ? 'Present Days' : 'Present Today', value: summary.presentCount, color: '#16a34a' },
+              { label: isPersonal ? 'Exit Permissions' : 'On Exit Permission', value: summary.onExitCount, color: '#d97706' },
+              { label: isPersonal ? 'Approved Leaves' : 'On Leave', value: summary.onLeaveCount, color: '#7c3aed' },
+              { label: isPersonal ? 'Absent Days' : 'Absent', value: summary.absentCount, color: '#dc2626' }
             ].map(s => (
               <div key={s.label} className="stat-card">
                 <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
@@ -79,7 +91,7 @@ export default function AttendancePage() {
           </div>
         )}
 
-        {/* Month Navigator */}
+        {/* View Switcher / Month Navigator */}
         <div className="card" style={{ padding: '12px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -89,16 +101,28 @@ export default function AttendancePage() {
               </span>
               <button className="btn btn-ghost" onClick={nextMonth} style={{ padding: '6px 10px' }}><ChevronRight size={16} /></button>
             </div>
-            {isSenior && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className={`btn ${view === 'monthly' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('monthly')} style={{ fontSize: '0.8125rem' }}>
-                  <Users size={14} /> Monthly Summary
-                </button>
-                <button className={`btn ${view === 'records' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('records')} style={{ fontSize: '0.8125rem' }}>
-                  <Calendar size={14} /> Daily Records
-                </button>
-              </div>
-            )}
+            
+            <div style={{ display: 'flex', gap: 8 }}>
+              {isSenior ? (
+                <>
+                  <button className={`btn ${view === 'monthly' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('monthly')} style={{ fontSize: '0.8125rem' }}>
+                    <Users size={14} /> Monthly Summary
+                  </button>
+                  <button className={`btn ${view === 'records' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('records')} style={{ fontSize: '0.8125rem' }}>
+                    <Calendar size={14} /> Daily Records
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className={`btn ${view === 'records' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('records')} style={{ fontSize: '0.8125rem' }}>
+                    <Calendar size={14} /> My Records
+                  </button>
+                  <button className={`btn ${view === 'colleagues' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('colleagues')} style={{ fontSize: '0.8125rem' }}>
+                    <Users size={14} /> Department Teammates ({colleagues.length})
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -159,8 +183,77 @@ export default function AttendancePage() {
           </div>
         )}
 
+        {/* Department Teammates Tab (Employee View) */}
+        {!isSenior && view === 'colleagues' && (
+          <div className="card">
+            <div className="card-header">
+              <h3><UserCheck size={16} style={{ color: 'var(--blue-600)' }} /> My Department Teammates — Today's Status</h3>
+            </div>
+            {colleagues.length === 0 ? (
+              <div className="empty-state">
+                <Users size={32} />
+                <h4>No Teammates Found</h4>
+                <p>No other active employees registered in your department.</p>
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Teammate</th>
+                      <th>Employee Code</th>
+                      <th>Designation</th>
+                      <th>Department</th>
+                      <th>Status Today</th>
+                      <th>Check In</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {colleagues.map((c: any) => (
+                      <tr key={c.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{
+                              width: 32, height: 32, borderRadius: '50%', background: 'var(--blue-700)',
+                              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '0.75rem', fontWeight: 700, overflow: 'hidden'
+                            }}>
+                              {c.avatarUrl ? (
+                                <img src={c.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                c.name.split(' ').map((n: string) => n[0]).join('')
+                              )}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{c.name}</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{c.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="font-mono" style={{ fontSize: '0.78rem', color: 'var(--blue-700)', fontWeight: 600 }}>
+                          {c.employeeCode}
+                        </td>
+                        <td style={{ fontSize: '0.8125rem' }}>{c.designation}</td>
+                        <td style={{ fontSize: '0.8125rem', color: 'var(--slate-600)' }}>{c.department}</td>
+                        <td>
+                          <span className={`badge ${statusBadgeClass(c.todayStatus)}`}>
+                            {statusLabel(c.todayStatus)}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: '0.8125rem', color: 'var(--slate-600)' }}>
+                          {c.checkInTime ? fmtTime(c.checkInTime) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Daily Records */}
-        {(!isSenior || view === 'records') && (
+        {view === 'records' && (
           <div className="card">
             <div className="card-header">
               <h3><Calendar size={16} style={{ color: 'var(--blue-600)' }} /> Daily Records — {MONTHS[month-1]} {year}</h3>

@@ -99,7 +99,7 @@ router.patch('/types/:id', authenticate, requireRoles(UserRole.SUPER_ADMIN, User
   }
 });
 
-// GET /api/leave/balances
+// GET /api/leave/balances — Dynamically calculated from live LeaveRequest actions
 router.get('/balances', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const targetEmployeeId = (req.query.employeeId as string) || req.user?.employeeId;
@@ -108,12 +108,67 @@ router.get('/balances', authenticate, async (req: AuthenticatedRequest, res: Res
       return res.status(400).json({ success: false, message: 'No employee record linked.' });
     }
 
+    // Auto-ensure leave balances exist for all active leave types
+    const leaveTypes = await prisma.leaveType.findMany();
+    for (const lt of leaveTypes) {
+      await prisma.leaveBalance.upsert({
+        where: { employeeId_leaveTypeId: { employeeId: targetEmployeeId, leaveTypeId: lt.id } },
+        update: {},
+        create: {
+          employeeId: targetEmployeeId,
+          leaveTypeId: lt.id,
+          totalDays: lt.defaultDaysPerYear,
+          usedDays: 0,
+          pendingDays: 0
+        }
+      });
+    }
+
     const balances = await prisma.leaveBalance.findMany({
       where: { employeeId: targetEmployeeId },
       include: { leaveType: true }
     });
 
-    return res.json({ success: true, data: balances });
+    // Calculate live usedDays and pendingDays directly from actual LeaveRequest actions
+    const enrichedBalances = await Promise.all(
+      balances.map(async (b) => {
+        const [approvedSum, pendingSum] = await Promise.all([
+          prisma.leaveRequest.aggregate({
+            where: { employeeId: targetEmployeeId, leaveTypeId: b.leaveTypeId, status: 'APPROVED' },
+            _sum: { totalDays: true }
+          }),
+          prisma.leaveRequest.aggregate({
+            where: {
+              employeeId: targetEmployeeId,
+              leaveTypeId: b.leaveTypeId,
+              status: { in: ['PENDING_MANAGER', 'PENDING_HR', 'PENDING_GM', 'PENDING_SUPER_ADMIN'] }
+            },
+            _sum: { totalDays: true }
+          })
+        ]);
+
+        const usedDays = approvedSum._sum.totalDays || 0;
+        const pendingDays = pendingSum._sum.totalDays || 0;
+        const availableDays = Math.max(0, b.totalDays - usedDays - pendingDays);
+
+        // Keep database record in sync
+        if (b.usedDays !== usedDays || b.pendingDays !== pendingDays) {
+          await prisma.leaveBalance.update({
+            where: { id: b.id },
+            data: { usedDays, pendingDays }
+          });
+        }
+
+        return {
+          ...b,
+          usedDays,
+          pendingDays,
+          availableDays
+        };
+      })
+    );
+
+    return res.json({ success: true, data: enrichedBalances });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to fetch leave balances' });
   }
@@ -122,9 +177,10 @@ router.get('/balances', authenticate, async (req: AuthenticatedRequest, res: Res
 // GET /api/leave/requests
 router.get('/requests', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { status, employeeId } = req.query;
+    const { status, employeeId, startDate, endDate, departmentId } = req.query;
     const role = req.user!.role;
     const userEmployeeId = req.user!.employeeId;
+    const userId = req.user!.userId;
 
     const where: any = {};
 
@@ -135,15 +191,39 @@ router.get('/requests', authenticate, async (req: AuthenticatedRequest, res: Res
     if (role === UserRole.EMPLOYEE) {
       where.employeeId = userEmployeeId;
     } else if (role === UserRole.MANAGER) {
-      // Manager views team/department requests
-      const managerEmp = await prisma.employee.findUnique({
-        where: { id: userEmployeeId }
+      // Manager views only their authority-connected employees
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'REPORTING_MANAGER', status: 'ACTIVE' },
+        select: { userId: true }
       });
-      if (managerEmp) {
-        where.employee = { departmentId: managerEmp.departmentId };
-      }
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
     } else if (employeeId) {
       where.employeeId = String(employeeId);
+    }
+
+    // Department filter (HR/Admin/GM only)
+    if (departmentId && String(departmentId) !== 'ALL' && role !== UserRole.EMPLOYEE && role !== UserRole.MANAGER) {
+      const deptEmps = await prisma.employee.findMany({
+        where: { departmentId: String(departmentId) },
+        select: { id: true }
+      });
+      where.employeeId = { in: deptEmps.map(e => e.id) };
+    }
+
+    // Date range filter on fromDate
+    if (startDate || endDate) {
+      where.fromDate = {};
+      if (startDate) where.fromDate.gte = new Date(String(startDate));
+      if (endDate) {
+        const end = new Date(String(endDate));
+        end.setDate(end.getDate() + 1);
+        where.fromDate.lt = end;
+      }
     }
 
     const requests = await prisma.leaveRequest.findMany({
@@ -175,6 +255,7 @@ router.get('/requests', authenticate, async (req: AuthenticatedRequest, res: Res
     return res.status(500).json({ success: false, message: 'Failed to fetch leave requests' });
   }
 });
+
 
 // GET /api/leave/requests/pending (Manager / HR / GM / Super Admin)
 // Returns only requests where the current user IS the connected authority
@@ -248,13 +329,28 @@ router.get('/requests/pending', authenticate, requireRoles(UserRole.MANAGER, Use
 // GET /api/leave/requests/pending-hr (HR and Super Admin)
 router.get('/requests/pending-hr', authenticate, requireRoles(UserRole.HR, UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    // HR sees PENDING_HR; Super Admin sees PENDING_HR + PENDING_SUPER_ADMIN
     const role = req.user!.role;
-    const statusFilter = role === UserRole.SUPER_ADMIN
-      ? { in: ['PENDING_HR', 'PENDING_SUPER_ADMIN'] }
-      : 'PENDING_HR';
+    const userId = req.user!.userId;
+    const where: any = {};
+
+    if (role === UserRole.SUPER_ADMIN) {
+      where.status = { in: ['PENDING_HR', 'PENDING_SUPER_ADMIN'] };
+    } else if (role === UserRole.HR) {
+      const juniors = await prisma.authorityConnection.findMany({
+        where: { authorityUserId: userId, connectionType: 'HR_AUTHORITY', status: 'ACTIVE' },
+        select: { userId: true }
+      });
+      const juniorUserIds = juniors.map(j => j.userId);
+      const juniorEmployees = await prisma.employee.findMany({
+        where: { userId: { in: juniorUserIds } },
+        select: { id: true }
+      });
+      where.status = 'PENDING_HR';
+      where.employeeId = { in: juniorEmployees.map(e => e.id) };
+    }
+
     const requests = await prisma.leaveRequest.findMany({
-      where: { status: statusFilter },
+      where,
       include: { employee: { include: { department: true } }, leaveType: true, approvals: { include: { approver: { include: { employee: true } } } } },
       orderBy: { createdAt: 'desc' }
     });

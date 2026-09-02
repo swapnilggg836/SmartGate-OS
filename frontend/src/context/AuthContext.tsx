@@ -60,7 +60,7 @@ export interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PUBLIC_PATHS = ['/login', '/register'];
+const PUBLIC_PATHS = ['/login', '/register', '/'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -105,11 +105,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Route guard
   useEffect(() => {
     if (loading) return;
-    const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p));
+    if (pathname === '/') {
+      if (user) {
+        router.replace('/dashboard');
+      } else {
+        router.replace('/login');
+      }
+      return;
+    }
+    const isPublic = PUBLIC_PATHS.some(p => p !== '/' && pathname.startsWith(p));
     if (!user && !isPublic) {
       router.replace('/login');
-    } else if (user && isPublic) {
-      router.replace('/dashboard');
     }
   }, [user, loading, pathname, router]);
 

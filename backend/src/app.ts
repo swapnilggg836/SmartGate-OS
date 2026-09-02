@@ -78,8 +78,11 @@ app.use('/api/security', securityRoutes); // Alias for frontend /security/* call
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit-logs', auditRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/admin/audit', auditRoutes);
 app.use('/api/authority', authorityRoutes);
 app.use('/api/visitors', visitorRoutes);
+
 
 // Global Error Handler
 app.use(errorHandler);

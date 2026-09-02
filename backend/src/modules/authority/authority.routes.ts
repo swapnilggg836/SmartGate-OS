@@ -142,8 +142,32 @@ router.get('/search', authenticate, async (req: AuthenticatedRequest, res: Respo
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/authority/my-connections — My current authorities (above me)
+// GET /api/authority/connections & /my-connections — My current authorities (above me)
 // ─────────────────────────────────────────────────────────────────────────────
+
+router.get('/connections', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const role = req.user!.role;
+    const where: any = role === UserRole.SUPER_ADMIN ? {} : { userId: req.user!.userId };
+    
+    const connections = await prisma.authorityConnection.findMany({
+      where,
+      include: {
+        user: { include: { employee: { include: { department: true } } } },
+        authorityUser: {
+          include: {
+            employee: { include: { department: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.json({ success: true, data: connections });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch connections' });
+  }
+});
 
 router.get('/my-connections', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -164,6 +188,7 @@ router.get('/my-connections', authenticate, async (req: AuthenticatedRequest, re
     return res.status(500).json({ success: false, message: 'Failed to fetch connections' });
   }
 });
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/authority/pending-connections — Connections awaiting MY response

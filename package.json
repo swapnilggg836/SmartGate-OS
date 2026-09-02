@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "npm run dev --workspace=backend",
-    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm --workspace=backend run dev",
+    "dev:frontend": "npm --workspace=frontend run dev",
     "build": "npm run build --workspace=packages/types && npm run build --workspace=backend && npm run build --workspace=frontend",
     "build:types": "npm run build --workspace=packages/types",
     "build:backend": "npm run build:types && npm run prisma:generate --workspace=backend && npm run build --workspace=backend",
