@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && prisma db push --accept-data-loss && tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push --accept-data-loss",
     "seed": "tsx prisma/seed.ts",
     "db:setup": "prisma db push --accept-data-loss && tsx prisma/seed.ts"
+
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",
