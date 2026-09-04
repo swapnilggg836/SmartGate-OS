@@ -7,7 +7,8 @@ import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import {
   UserCheck, Search, ToggleLeft, ToggleRight, AlertCircle,
-  Plus, RefreshCw, Eye, EyeOff, UserPlus, Download
+  Plus, RefreshCw, Eye, EyeOff, UserPlus, Download, KeyRound,
+  Copy, Check, ShieldCheck, Lock
 } from 'lucide-react';
 import { fmtDate } from '@/lib/utils';
 
@@ -20,15 +21,6 @@ const ROLE_LABELS: Record<string, string> = {
   GM: 'General Manager',
   SECURITY_GUARD: 'Security Guard',
   SUPER_ADMIN: 'Super Admin',
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  EMPLOYEE: 'badge-blue',
-  MANAGER: 'badge-amber',
-  HR: 'badge-green',
-  GM: 'badge-amber',
-  SECURITY_GUARD: 'badge-slate',
-  SUPER_ADMIN: 'badge-red',
 };
 
 function initials(first?: string, last?: string) {
@@ -47,6 +39,27 @@ export default function UsersAdminPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [viewUser, setViewUser] = useState<any>(null);
+
+  // Reset Password Modal
+  const [resetModal, setResetModal] = useState<{
+    open: boolean;
+    user: any;
+    newPassword: string;
+    showPassword: boolean;
+    submitting: boolean;
+    successResult: { password: string; email: string } | null;
+    copied: boolean;
+    error: string;
+  }>({
+    open: false,
+    user: null,
+    newPassword: '',
+    showPassword: false,
+    submitting: false,
+    successResult: null,
+    copied: false,
+    error: ''
+  });
 
   // Create form
   const [form, setForm] = useState({
@@ -160,6 +173,63 @@ export default function UsersAdminPage() {
       setTimeout(() => setSuccess(''), 2500);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update role');
+    }
+  };
+
+  // Open reset modal
+  const openResetPassword = (user: any) => {
+    setResetModal({
+      open: true,
+      user,
+      newPassword: '',
+      showPassword: false,
+      submitting: false,
+      successResult: null,
+      copied: false,
+      error: ''
+    });
+  };
+
+  // Auto generate secure password
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+    const pwd = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    setResetModal(prev => ({ ...prev, newPassword: pwd, showPassword: true, error: '' }));
+  };
+
+  // Execute admin reset password
+  const handleAdminResetPassword = async () => {
+    if (!resetModal.user) return;
+    setResetModal(prev => ({ ...prev, submitting: true, error: '' }));
+    try {
+      const res = await api.post(`/users/${resetModal.user.id}/reset-password`, {
+        newPassword: resetModal.newPassword || undefined
+      });
+      const resultPwd = res.data?.data?.newPassword || resetModal.newPassword;
+      setResetModal(prev => ({
+        ...prev,
+        submitting: false,
+        successResult: {
+          password: resultPwd,
+          email: resetModal.user.email
+        }
+      }));
+      setSuccess(`✅ Password for ${resetModal.user.email} reset successfully.`);
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err: any) {
+      setResetModal(prev => ({
+        ...prev,
+        submitting: false,
+        error: err.response?.data?.message || 'Failed to reset user password.'
+      }));
+    }
+  };
+
+  const copyResetPassword = () => {
+    if (resetModal.successResult?.password) {
+      navigator.clipboard.writeText(resetModal.successResult.password);
+      setResetModal(prev => ({ ...prev, copied: true }));
+      setTimeout(() => setResetModal(prev => ({ ...prev, copied: false })), 2500);
     }
   };
 
@@ -353,7 +423,7 @@ export default function UsersAdminPage() {
                       </td>
                       <td style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{fmtDate(u.createdAt)}</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={() => setViewUser(u)}
@@ -362,11 +432,22 @@ export default function UsersAdminPage() {
                           >
                             <Eye size={13} />
                           </button>
+                          
+                          {/* Reset Password Action for Super Admin */}
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => openResetPassword(u)}
+                            title="Reset User Password"
+                            style={{ padding: '4px 8px', color: 'var(--blue-700)', borderColor: 'var(--blue-300)', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}
+                          >
+                            <KeyRound size={12} /> Reset Pwd
+                          </button>
+
                           <button
                             className={`btn btn-sm ${u.isActive ? 'btn-danger-outline' : 'btn-success'}`}
                             onClick={() => setConfirmModal({ open: true, user: u })}
                             disabled={toggling === u.id}
-                            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', padding: '4px 8px' }}
                           >
                             {toggling === u.id
                               ? <Spinner />
@@ -385,6 +466,134 @@ export default function UsersAdminPage() {
           )}
         </div>
       </div>
+
+      {/* ============================
+          RESET PASSWORD MODAL (SUPER ADMIN)
+          ============================ */}
+      <Modal
+        open={resetModal.open}
+        onClose={() => setResetModal(prev => ({ ...prev, open: false }))}
+        title="🔑 Admin Password Reset"
+        footer={
+          resetModal.successResult ? (
+            <button className="btn btn-primary" onClick={() => setResetModal(prev => ({ ...prev, open: false }))}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button className="btn btn-ghost" onClick={() => setResetModal(prev => ({ ...prev, open: false }))}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleAdminResetPassword}
+                disabled={resetModal.submitting}
+              >
+                {resetModal.submitting ? <><Spinner white size="sm" /> Resetting...</> : <><KeyRound size={14} /> Confirm Reset</>}
+              </button>
+            </>
+          )
+        }
+      >
+        {resetModal.user && (
+          <div className="space-y-4">
+            {resetModal.successResult ? (
+              <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%', background: 'var(--green-50)',
+                  color: 'var(--green-600)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 12
+                }}>
+                  <ShieldCheck size={28} />
+                </div>
+                <h3 style={{ fontSize: '1.15rem', color: 'var(--slate-800)', marginBottom: 4 }}>
+                  Password Reset Successful!
+                </h3>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--slate-500)', marginBottom: 16 }}>
+                  The password for <strong>{resetModal.successResult.email}</strong> has been updated.
+                </p>
+
+                <div style={{
+                  background: 'var(--slate-50)', border: '1px solid var(--slate-200)',
+                  borderRadius: 10, padding: '14px 18px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', gap: 12
+                }}>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--slate-400)', fontWeight: 600 }}>NEW PASSWORD</div>
+                    <div className="font-mono" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--blue-700)', letterSpacing: '0.05em' }}>
+                      {resetModal.successResult.password}
+                    </div>
+                  </div>
+                  <button
+                    className={`btn btn-sm ${resetModal.copied ? 'btn-success' : 'btn-outline'}`}
+                    onClick={copyResetPassword}
+                    style={{ gap: 6 }}
+                  >
+                    {resetModal.copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginTop: 10 }}>
+                  Share this temporary/new password securely with the user.
+                </p>
+              </div>
+            ) : (
+              <>
+                {resetModal.error && (
+                  <div className="alert alert-error">
+                    <AlertCircle size={14} />
+                    <span>{resetModal.error}</span>
+                  </div>
+                )}
+
+                <div style={{ background: 'var(--blue-50)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--blue-100)' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--blue-900)' }}>
+                    {resetModal.user.employee ? `${resetModal.user.employee.firstName} ${resetModal.user.employee.lastName}` : resetModal.user.email}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--blue-700)', marginTop: 2 }}>
+                    Email: {resetModal.user.email} · Role: {ROLE_LABELS[resetModal.user.role] || resetModal.user.role}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label className="form-label" style={{ marginBottom: 0 }}>
+                      New Password (Optional)
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={generateRandomPassword}
+                      style={{ fontSize: '0.72rem', color: 'var(--blue-700)', padding: '2px 6px' }}
+                    >
+                      🎲 Generate Random
+                    </button>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="form-control"
+                      type={resetModal.showPassword ? 'text' : 'password'}
+                      placeholder="Leave blank to auto-generate, or type min 6 chars"
+                      value={resetModal.newPassword}
+                      onChange={e => setResetModal(prev => ({ ...prev, newPassword: e.target.value }))}
+                      style={{ paddingRight: 36 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setResetModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                      style={{ position: 'absolute', right: 10, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--slate-400)' }}
+                    >
+                      {resetModal.showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  <span className="form-hint">
+                    Setting a new password will immediately update the database and invalidate the user's current session.
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* ============================
           CREATE USER MODAL

@@ -53,6 +53,26 @@ export default function DepartmentsPage() {
 
   if (loading) return <AppLayout><PageLoader /></AppLayout>;
 
+  const downloadDeptCsv = () => {
+    if (departments.length === 0) return;
+    const headers = ['Department Code', 'Department Name', 'Description', 'Total Employees'];
+    const rows = departments.map(d => [
+      d.code || '—',
+      `"${d.name}"`,
+      `"${(d.description || '').replace(/"/g, '""')}"`,
+      String(d.employees?.length || 0)
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `departments-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <AppLayout>
       <div className="space-y-4">
@@ -62,7 +82,12 @@ export default function DepartmentsPage() {
               <h1><Building size={20} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--blue-700)' }} />Departments</h1>
               <p>Manage company departments and teams</p>
             </div>
-            <button className="btn btn-primary" onClick={openAdd}><Plus size={15} /> Add Department</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-outline btn-sm" onClick={downloadDeptCsv} disabled={departments.length === 0}>
+                Export CSV
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={openAdd}><Plus size={15} /> Add Department</button>
+            </div>
           </div>
         </div>
 

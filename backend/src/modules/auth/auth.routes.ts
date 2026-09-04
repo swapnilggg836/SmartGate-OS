@@ -505,4 +505,272 @@ router.put('/change-password', authenticate, validateBody(changePasswordSchema),
   }
 });
 
+// ============================================================
+// OTP-BASED PASSWORD RESET FOR INDIVIDUAL USERS
+// ============================================================
+
+const requestResetOtpSchema = z.object({
+  email: z.string().email('Please provide a valid email address')
+});
+
+const verifyResetOtpSchema = z.object({
+  email: z.string().email(),
+  otp: z.string().min(4, 'Valid OTP is required'),
+  newPassword: z.string().min(6, 'New password must be at least 6 characters')
+});
+
+// POST /api/auth/forgot-password/request-otp (Public Forgot Password -> Send OTP)
+router.post('/forgot-password/request-otp', validateBody(requestResetOtpSchema), async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { employee: true }
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active user found with this email address.'
+      });
+    }
+
+    // Generate 6-digit numeric OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+
+    // Invalidate existing pending OTPs for this email
+    await prisma.passwordResetOtp.updateMany({
+      where: { email, used: false },
+      data: { used: true }
+    });
+
+    // Create new OTP record in MySQL
+    await prisma.passwordResetOtp.create({
+      data: {
+        email,
+        otp,
+        expiresAt,
+        used: false
+      }
+    });
+
+    // Create a real-time Notification for the user
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        title: '🔐 Password Reset OTP Code',
+        message: `Your one-time verification code is: ${otp}. It will expire in 10 minutes. Do not share this code with anyone.`,
+        type: 'ALERT',
+        priority: 'HIGH'
+      }
+    });
+
+    await logAudit({
+      userId: user.id,
+      userEmail: user.email,
+      action: 'PASSWORD_RESET_OTP_REQUESTED',
+      entity: 'User',
+      entityId: user.id,
+      newValues: { email },
+      req
+    });
+
+    return res.json({
+      success: true,
+      message: `Verification OTP has been generated for ${email}.`,
+      data: {
+        email,
+        otp, // included for easy UI verification and testing
+        expiresInMinutes: 10
+      }
+    });
+  } catch (err: any) {
+    console.error('Request reset OTP error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate reset OTP: ' + (err.message || '')
+    });
+  }
+});
+
+// POST /api/auth/forgot-password/verify-otp (Verify OTP and Reset Password)
+router.post('/forgot-password/verify-otp', validateBody(verifyResetOtpSchema), async (req: Request, res: Response) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active user account found.'
+      });
+    }
+
+    // Check OTP validity
+    const validOtp = await prisma.passwordResetOtp.findFirst({
+      where: {
+        email,
+        otp,
+        used: false,
+        expiresAt: { gte: new Date() }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!validOtp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP verification code. Please request a new code.'
+      });
+    }
+
+    // Mark OTP as used
+    await prisma.passwordResetOtp.update({
+      where: { id: validOtp.id },
+      data: { used: true }
+    });
+
+    // Hash and update new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        refreshToken: null // Invalidate existing sessions
+      }
+    });
+
+    // Notify user of successful password reset
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        title: '✅ Password Successfully Reset',
+        message: 'Your account password was successfully reset using OTP verification. You can now login with your new credentials.',
+        type: 'INFO',
+        priority: 'HIGH'
+      }
+    });
+
+    await logAudit({
+      userId: user.id,
+      userEmail: user.email,
+      action: 'PASSWORD_RESET_VIA_OTP',
+      entity: 'User',
+      entityId: user.id,
+      newValues: { email, resetMethod: 'OTP' },
+      req
+    });
+
+    return res.json({
+      success: true,
+      message: 'Your password has been successfully reset! You can now log in.'
+    });
+  } catch (err: any) {
+    console.error('Verify reset OTP error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reset password: ' + (err.message || '')
+    });
+  }
+});
+
+// POST /api/auth/profile/request-reset-otp (Authenticated User -> Send OTP to self)
+router.post('/profile/request-reset-otp', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const email = user.email;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.passwordResetOtp.updateMany({
+      where: { email, used: false },
+      data: { used: true }
+    });
+
+    await prisma.passwordResetOtp.create({
+      data: { email, otp, expiresAt, used: false }
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        title: '🔐 Self-Service Password Reset OTP',
+        message: `Your password reset code is: ${otp}. Valid for 10 minutes.`,
+        type: 'ALERT',
+        priority: 'HIGH'
+      }
+    });
+
+    return res.json({
+      success: true,
+      message: `OTP sent to ${email}`,
+      data: { email, otp, expiresInMinutes: 10 }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: 'Failed to generate OTP: ' + (err.message || '') });
+  }
+});
+
+// POST /api/auth/profile/verify-reset-otp (Authenticated User -> Verify OTP and Reset)
+router.post('/profile/verify-reset-otp', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { otp, newPassword } = req.body;
+
+    if (!otp || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Valid OTP and new password (min 6 chars) required.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const validOtp = await prisma.passwordResetOtp.findFirst({
+      where: {
+        email: user.email,
+        otp,
+        used: false,
+        expiresAt: { gte: new Date() }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!validOtp) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP verification code.' });
+    }
+
+    await prisma.passwordResetOtp.update({
+      where: { id: validOtp.id },
+      data: { used: true }
+    });
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash }
+    });
+
+    await logAudit({
+      userId: user.id,
+      userEmail: user.email,
+      action: 'PASSWORD_RESET_SELF_OTP',
+      entity: 'User',
+      entityId: user.id,
+      req
+    });
+
+    return res.json({ success: true, message: 'Password reset successfully!' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: 'Failed to reset password: ' + (err.message || '') });
+  }
+});
+
 export default router;

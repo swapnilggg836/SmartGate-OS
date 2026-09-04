@@ -60,7 +60,7 @@ export interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PUBLIC_PATHS = ['/login', '/register', '/'];
+const PUBLIC_PATHS = ['/login', '/register', '/', '/visitor-register', '/visitor-pass'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);

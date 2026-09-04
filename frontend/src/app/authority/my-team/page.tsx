@@ -20,7 +20,6 @@ interface Junior {
   isOutside?: boolean;
   isOverdue?: boolean;
   outsideDetails?: any;
-  pendingLeavesCount?: number;
   pendingExitsCount?: number;
   user?: {
     id: string;
@@ -34,7 +33,6 @@ interface Junior {
       designation: string;
       avatarUrl?: string;
       department?: { name: string };
-      leaveRequests?: { id: string; status: string }[];
       exitRequests?: { id: string; status: string }[];
     };
   };
@@ -74,15 +72,13 @@ export default function MyTeamPage() {
   const stats = useMemo(() => {
     let present = 0;
     let outside = 0;
-    let onLeave = 0;
     let pending = 0;
 
     juniors.forEach(j => {
       if (j.isOutside) outside++;
-      else if (j.computedStatus === 'ON_LEAVE') onLeave++;
       else present++;
 
-      const pendingCount = (j.pendingLeavesCount || 0) + (j.pendingExitsCount || 0);
+      const pendingCount = j.pendingExitsCount || 0;
       if (pendingCount > 0) pending += pendingCount;
     });
 
@@ -90,7 +86,6 @@ export default function MyTeamPage() {
       total: juniors.length,
       present,
       outside,
-      onLeave,
       pending
     };
   }, [juniors]);
@@ -109,9 +104,8 @@ export default function MyTeamPage() {
       if (!matchesSearch) return false;
 
       if (statusFilter === 'OUTSIDE') return j.isOutside;
-      if (statusFilter === 'ON_LEAVE') return j.computedStatus === 'ON_LEAVE';
-      if (statusFilter === 'PRESENT') return !j.isOutside && j.computedStatus !== 'ON_LEAVE';
-      if (statusFilter === 'PENDING') return ((j.pendingLeavesCount || 0) + (j.pendingExitsCount || 0)) > 0;
+      if (statusFilter === 'PRESENT') return !j.isOutside;
+      if (statusFilter === 'PENDING') return (j.pendingExitsCount || 0) > 0;
 
       return true;
     });
@@ -139,7 +133,7 @@ export default function MyTeamPage() {
               <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Users size={24} style={{ color: 'var(--blue-700)' }} /> Team Operations & Management
               </h1>
-              <p>Real-time oversight of connected team members, attendance status, active gate exits & approval routing</p>
+              <p>Real-time oversight of connected team members, active gate exits & approval routing</p>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <Link href="/approvals" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
@@ -153,7 +147,7 @@ export default function MyTeamPage() {
         </div>
 
         {/* KPI Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
           <div
             className="card"
             style={{ padding: '14px 18px', borderLeft: '4px solid var(--blue-600)', cursor: 'pointer' }}
@@ -171,7 +165,7 @@ export default function MyTeamPage() {
           >
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--green-700)' }}>Present On-Site</div>
             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--green-600)', marginTop: 2 }}>{stats.present}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--green-700)' }}>In building today</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--green-700)' }}>In building</div>
           </div>
 
           <div
@@ -182,16 +176,6 @@ export default function MyTeamPage() {
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--amber-700)' }}>Currently Outside</div>
             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--amber-600)', marginTop: 2 }}>{stats.outside}</div>
             <div style={{ fontSize: '0.68rem', color: 'var(--amber-700)' }}>On gate pass permission</div>
-          </div>
-
-          <div
-            className="card"
-            style={{ padding: '14px 18px', borderLeft: '4px solid #8b5cf6', cursor: 'pointer' }}
-            onClick={() => setStatusFilter('ON_LEAVE')}
-          >
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>On Approved Leave</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5cf6', marginTop: 2 }}>{stats.onLeave}</div>
-            <div style={{ fontSize: '0.68rem', color: '#7c3aed' }}>Scheduled absence</div>
           </div>
 
           <Link
@@ -273,7 +257,6 @@ export default function MyTeamPage() {
                 { id: 'ALL', label: `All (${juniors.length})` },
                 { id: 'PRESENT', label: `Present (${stats.present})` },
                 { id: 'OUTSIDE', label: `Outside (${stats.outside})` },
-                { id: 'ON_LEAVE', label: `On Leave (${stats.onLeave})` },
                 { id: 'PENDING', label: `Pending Action (${stats.pending})` },
               ].map(f => (
                 <button
@@ -305,9 +288,7 @@ export default function MyTeamPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
             {filtered.map(conn => {
               const emp = conn.user?.employee;
-              const pendingLeave = conn.pendingLeavesCount || 0;
               const pendingExit = conn.pendingExitsCount || 0;
-              const totalPending = pendingLeave + pendingExit;
 
               return (
                 <div key={conn.id} className="card" style={{ padding: 18, position: 'relative' }}>
@@ -320,10 +301,6 @@ export default function MyTeamPage() {
                     {conn.isOutside ? (
                       <span className={`badge ${conn.isOverdue ? 'badge-danger' : 'badge-amber'}`} style={{ fontSize: '0.7rem', fontWeight: 700 }}>
                         {conn.isOverdue ? '🚨 OVERDUE' : '🟡 Outside'}
-                      </span>
-                    ) : conn.computedStatus === 'ON_LEAVE' ? (
-                      <span className="badge" style={{ background: '#ede9fe', color: '#7c3aed', fontSize: '0.7rem', fontWeight: 700 }}>
-                        🟣 On Leave
                       </span>
                     ) : (
                       <span className="badge badge-success" style={{ fontSize: '0.7rem', fontWeight: 700 }}>
@@ -362,7 +339,7 @@ export default function MyTeamPage() {
 
                   {/* Pending Status Alert */}
                   <div style={{ marginBottom: 14 }}>
-                    {totalPending > 0 ? (
+                    {pendingExit > 0 ? (
                       <div style={{
                         padding: '8px 12px', borderRadius: 8,
                         background: 'var(--amber-50)', border: '1px solid var(--amber-200)',
@@ -370,14 +347,14 @@ export default function MyTeamPage() {
                         fontSize: '0.78rem', color: 'var(--amber-800)', fontWeight: 600
                       }}>
                         <Clock size={14} color="var(--amber-600)" />
-                        {totalPending} pending request{totalPending > 1 ? 's' : ''} ({pendingLeave} leave · {pendingExit} exit)
+                        {pendingExit} pending exit request{pendingExit > 1 ? 's' : ''}
                       </div>
                     ) : (
                       <div style={{
                         padding: '6px 10px', borderRadius: 8, background: 'var(--green-50)',
                         fontSize: '0.75rem', color: 'var(--green-700)', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500
                       }}>
-                        <CheckCircle2 size={13} /> All requests up to date
+                        <CheckCircle2 size={13} /> All exit requests up to date
                       </div>
                     )}
                   </div>
@@ -389,7 +366,7 @@ export default function MyTeamPage() {
                       className="btn btn-primary btn-sm"
                       style={{ flex: 1, textDecoration: 'none', justifyContent: 'center' }}
                     >
-                      <FileText size={13} /> {totalPending > 0 ? 'Approve Requests' : 'View History'}
+                      <FileText size={13} /> {pendingExit > 0 ? 'Approve Exit' : 'View History'}
                     </Link>
                     {emp?.id && (
                       <Link

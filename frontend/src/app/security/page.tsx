@@ -7,8 +7,9 @@ import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import {
   Shield, Search, CheckCircle2, Clock, AlertTriangle, AlertCircle,
-  Users, UserX, UserCheck, Flame, RefreshCw, ArrowRight, UserPlus, LogOut
+  Users, UserX, UserCheck, Flame, RefreshCw, ArrowRight, UserPlus, LogOut, Camera, QrCode
 } from 'lucide-react';
+import { QRScannerModal } from '@/components/qr/QRScannerModal';
 import Link from 'next/link';
 
 export default function SecurityPage() {
@@ -32,6 +33,7 @@ export default function SecurityPage() {
   const [verifying, setVerifying] = useState(false);
   const [actioning, setActioning] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   // Operational Context (Gate & Shift)
   const [selectedGate, setSelectedGate] = useState('Gate 1 — Main Entrance');
@@ -76,8 +78,12 @@ export default function SecurityPage() {
   }, [activeTab]);
 
   const verify = async (queryToSearch?: string) => {
-    const q = (queryToSearch || search).trim();
+    let q = (queryToSearch || search).trim();
+    if (q.includes('/visitor-pass/')) {
+      q = q.split('/visitor-pass/').pop()?.split('?')[0] || q;
+    }
     if (!q) return;
+    setSearch(q);
     setVerifying(true);
     setVerifyResult(null);
     setActionMsg(null);
@@ -258,16 +264,24 @@ export default function SecurityPage() {
                 <h3 className="card-title"><Search size={16} /> Enter Pass ID / Employee Code / Scan QR</h3>
               </div>
               <div className="card-body">
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <input
                     className="form-control"
-                    placeholder="Search by Pass ID (GP-2026-00125) or Employee ID (EMP1001)..."
+                    placeholder="Search by Pass ID (GP-2026-00125), Employee ID (EMP1001), or Scan QR..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && verify()}
-                    style={{ flex: 1, fontSize: '0.95rem' }}
+                    style={{ flex: 1, minWidth: 260, fontSize: '0.95rem' }}
                     autoFocus
                   />
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setShowScanner(true)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+                  >
+                    <Camera size={16} /> Scan Camera
+                  </button>
                   <button className="btn btn-primary" onClick={() => verify()} disabled={verifying}>
                     {verifying ? <Spinner white size="sm" /> : <Shield size={16} />}
                     Verify Pass
@@ -591,6 +605,14 @@ export default function SecurityPage() {
           </div>
         )}
       </div>
+
+      <QRScannerModal
+        isOpen={showScanner}
+        onClose={() => setShowScanner(false)}
+        onScanSuccess={(decodedText) => {
+          verify(decodedText);
+        }}
+      />
     </AppLayout>
   );
 }

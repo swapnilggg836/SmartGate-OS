@@ -6,7 +6,9 @@ import { fmtDate, fmtTime, statusBadgeClass, statusLabel } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
-import { Shield, Search, CheckCircle2, XCircle, Clock, AlertTriangle, Users, UserPlus, LogIn, LogOut, QrCode, RefreshCw, MessageCircle } from 'lucide-react';
+import { Shield, Search, CheckCircle2, XCircle, Clock, AlertTriangle, Users, UserPlus, LogIn, LogOut, QrCode, RefreshCw, MessageCircle, Camera, Printer } from 'lucide-react';
+import { QRScannerModal } from '@/components/qr/QRScannerModal';
+import { QRCodeSVG } from 'qrcode.react';
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -18,12 +20,17 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 }
 
 function WalkInModal({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
-  const [form, setForm] = useState({ fullName: '', mobile: '', gender: 'MALE', organization: '', idType: '', purpose: '', expectedExitTime: '18:00', numberOfVisitors: 1, vehicleNumber: '' });
+  const [form, setForm] = useState({ fullName: '', mobile: '', gender: 'MALE', organization: '', idType: '', purpose: '', expectedExitTime: '18:00', numberOfVisitors: 1, vehicleNumber: '', photoUrl: '' });
   const [host, setHost] = useState<any>(null);
   const [hostQ, setHostQ] = useState('');
   const [hostResults, setHostResults] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const set = (k: string) => (e: React.ChangeEvent<any>) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
@@ -34,6 +41,47 @@ function WalkInModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
     }, 350);
     return () => clearTimeout(t);
   }, [hostQ]);
+
+  const startCamera = async () => {
+    try {
+      setIsCameraActive(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+    } catch {
+      alert('Camera not accessible. Please choose an image file.');
+      setIsCameraActive(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    setIsCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 300; canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const v = videoRef.current;
+      const minDim = Math.min(v.videoWidth || 300, v.videoHeight || 300);
+      ctx.drawImage(v, (v.videoWidth - minDim) / 2, (v.videoHeight - minDim) / 2, minDim, minDim, 0, 0, 300, 300);
+      setForm(f => ({ ...f, photoUrl: canvas.toDataURL('image/jpeg', 0.85) }));
+      stopCamera();
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setForm(f => ({ ...f, photoUrl: ev.target?.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setSubmitting(true);
@@ -46,10 +94,38 @@ function WalkInModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Register Walk-in Visitor"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" form="walkin-form" type="submit" disabled={submitting}>{submitting && <Spinner white size="sm" />} Register</button></>}>
+    <Modal open={open} onClose={() => { stopCamera(); onClose(); }} title="Register Walk-in Visitor"
+      footer={<><button className="btn btn-ghost" onClick={() => { stopCamera(); onClose(); }}>Cancel</button><button className="btn btn-primary" form="walkin-form" type="submit" disabled={submitting}>{submitting && <Spinner white size="sm" />} Register</button></>}>
       <form id="walkin-form" onSubmit={submit} className="space-y-3">
         {error && <div className="alert alert-error"><AlertTriangle size={14} /><span>{error}</span></div>}
+
+        {/* PHOTO CAPTURE SECTION */}
+        <div style={{ background: 'var(--slate-50)', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--slate-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>Visitor Photo (Optional/Live Selfie)</span>
+          </div>
+          {isCameraActive ? (
+            <div style={{ textAlign: 'center', position: 'relative', width: 220, margin: '0 auto' }}>
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: 160, borderRadius: 8, objectFit: 'cover' }} />
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 6 }}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={capturePhoto}>Snap</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={stopCamera}>Cancel</button>
+              </div>
+            </div>
+          ) : form.photoUrl ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src={form.photoUrl} alt="Visitor" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--green-500)' }} />
+              <span style={{ fontSize: '0.75rem', color: 'var(--green-700)', fontWeight: 600 }}>✓ Photo attached</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setForm(f => ({ ...f, photoUrl: '' }))}>Remove</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn btn-outline btn-sm" onClick={startCamera} style={{ fontSize: '0.75rem' }}><Camera size={13} /> Snap WebCam</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => fileInputRef.current?.click()} style={{ fontSize: '0.75rem' }}>Upload Photo</button>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+            </div>
+          )}
+        </div>
 
         <div style={{ background: 'var(--slate-50)', borderRadius: 8, padding: '12px 14px', marginBottom: 4 }}>
           <p style={{ fontWeight: 600, fontSize: '0.8125rem', marginBottom: 8 }}>Person to Visit</p>
@@ -144,6 +220,7 @@ export default function SecurityVisitorsPage() {
   const [checkInTarget, setCheckInTarget] = useState<any>(null);
   const [actioning, setActioning] = useState<string | null>(null);
   const [showQrPoster, setShowQrPoster] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,12 +233,23 @@ export default function SecurityVisitorsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const verify = async () => {
-    if (!verifySearch.trim()) return;
-    setVerifying(true); setVerifyResult(null);
-    try { const r = await api.post('/visitors/security/verify', { identifier: verifySearch.trim() }); setVerifyResult(r.data); }
-    catch (err: any) { setVerifyResult({ error: err.response?.data?.message || 'Not found' }); }
-    finally { setVerifying(false); }
+  const verify = async (queryToSearch?: string) => {
+    let q = (queryToSearch || verifySearch).trim();
+    if (q.includes('/visitor-pass/')) {
+      q = q.split('/visitor-pass/').pop()?.split('?')[0] || q;
+    }
+    if (!q) return;
+    setVerifySearch(q);
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const r = await api.post('/visitors/security/verify', { identifier: q });
+      setVerifyResult(r.data);
+    } catch (err: any) {
+      setVerifyResult({ error: err.response?.data?.message || 'Visitor record not found.' });
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const checkOut = async (visitId: string) => {
@@ -182,8 +270,11 @@ export default function SecurityVisitorsPage() {
       <div className="space-y-4">
         <div className="page-header">
           <div className="page-header-row">
-            <div><h1>Security · Visitor Console</h1><p style={{ marginTop: 2 }}>Today's visitor management and gate control</p></div>
+            <div><h1>Security · Visitor Console</h1><p style={{ marginTop: 2 }}>Today's visitor management, gate entry, and live QR verification</p></div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowScanner(true)}>
+                <Camera size={14} /> Scan Visitor QR
+              </button>
               <button className="btn btn-outline btn-sm" onClick={() => setShowQrPoster(true)}>
                 <QrCode size={14} /> Gate QR Poster
               </button>
@@ -203,10 +294,33 @@ export default function SecurityVisitorsPage() {
 
         {/* Quick Verify */}
         <div className="card" style={{ padding: '16px 20px' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 12, color: 'var(--slate-700)' }}>?? Verify Visitor Pass / QR</h3>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input className="form-control" placeholder="Scan QR, enter Pass No. (VP-...), Visit ID (VIS-...) or mobile..." value={verifySearch} onChange={e => setVerifySearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && verify()} style={{ flex: 1 }} />
-            <button className="btn btn-primary" onClick={verify} disabled={verifying}>{verifying ? <Spinner white size="sm" /> : <QrCode size={16} />} Verify</button>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 12, color: 'var(--slate-700)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <QrCode size={16} color="#2563eb" /> Verify Visitor Pass & Scan QR
+          </h3>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <input
+              className="form-control"
+              placeholder="Scan QR or enter Pass No. (VP-...), Visit ID (VIS-...) or mobile..."
+              value={verifySearch}
+              onChange={e => setVerifySearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && verify()}
+              style={{ flex: 1, minWidth: 260 }}
+            />
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setShowScanner(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+            >
+              <Camera size={16} /> Scan Camera
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => verify()}
+              disabled={verifying}
+            >
+              {verifying ? <Spinner white size="sm" /> : <QrCode size={16} />} Verify
+            </button>
           </div>
 
           {verifyResult && (
@@ -220,20 +334,45 @@ export default function SecurityVisitorsPage() {
                     const v = verifyResult.data?.visit || verifyResult.data;
                     if (!v) return null;
                     const hEmp = v.hostUser?.employee;
+                    const photo = v.photoUrl || v.visitor?.photoUrl;
                     return (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '1rem' }}>{v.visitor?.fullName}</div>
-                             <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)' }}>{v.visitor?.mobile}{v.visitor?.organization ? ` · ${v.visitor.organization}` : ''}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {photo ? (
+                              <img
+                                src={photo}
+                                alt="Visitor"
+                                style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: '2.5px solid #2563eb', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+                              />
+                            ) : (
+                              <div style={{
+                                width: 44,
+                                height: 44,
+                                borderRadius: '50%',
+                                background: 'var(--blue-100)',
+                                color: 'var(--blue-700)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 700,
+                                fontSize: '1rem'
+                              }}>
+                                {v.visitor?.fullName ? v.visitor.fullName.charAt(0).toUpperCase() : 'V'}
+                              </div>
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '1rem' }}>{v.visitor?.fullName}</div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)' }}>{v.visitor?.mobile}{v.visitor?.organization ? ` · ${v.visitor.organization}` : ''}</div>
+                            </div>
                           </div>
-                           <span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span>
+                          <span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: 'var(--slate-700)', marginBottom: 12 }}>
-                           <div>Meeting: <strong>{hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : v.hostUser?.email}</strong></div>
-                          <div>Dept: <strong>{v.department?.name || hEmp?.department?.name || '?'}</strong></div>
+                          <div>Meeting: <strong>{hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : v.hostUser?.email}</strong></div>
+                          <div>Dept: <strong>{v.department?.name || hEmp?.department?.name || '—'}</strong></div>
                           <div>Purpose: <strong>{v.purpose}</strong></div>
-                           <div>Time: <strong style={{ fontFamily: 'monospace' }}>{v.expectedEntryTime} – {v.expectedExitTime}</strong></div>
+                          <div>Time: <strong style={{ fontFamily: 'monospace' }}>{v.expectedEntryTime} – {v.expectedExitTime}</strong></div>
                           {verifyResult.data?.passNumber && <div style={{ gridColumn: '1/-1' }}>Pass: <strong style={{ fontFamily: 'monospace' }}>{verifyResult.data.passNumber}</strong></div>}
                         </div>
                         {['APPROVED', 'WAITING'].includes(v.status) && !verifyResult.warnings?.length && (
@@ -277,10 +416,42 @@ export default function SecurityVisitorsPage() {
                     {list.map((v: any) => {
                       const hEmp = v.hostUser?.employee;
                       const checkIn = v.checkIns?.[0];
+                      const photo = v.photoUrl || v.visitor?.photoUrl;
                       return (
                         <tr key={v.id} style={v.status === 'OVERDUE' ? { background: '#fff7ed' } : {}}>
                           <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}>{v.visitId}</td>
-                          <td><div style={{ fontWeight: 600 }}>{v.visitor?.fullName}</div><div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{v.visitor?.mobile}</div></td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {photo ? (
+                                <img
+                                  src={photo}
+                                  alt="Visitor"
+                                  style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #3b82f6', flexShrink: 0 }}
+                                />
+                              ) : (
+                                <div style={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: '50%',
+                                  background: 'var(--blue-50)',
+                                  color: 'var(--blue-600)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 700,
+                                  fontSize: '0.75rem',
+                                  flexShrink: 0,
+                                  border: '1px solid var(--blue-200)'
+                                }}>
+                                  {v.visitor?.fullName ? v.visitor.fullName.charAt(0).toUpperCase() : 'V'}
+                                </div>
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 600 }}>{v.visitor?.fullName}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{v.visitor?.mobile}</div>
+                              </div>
+                            </div>
+                          </td>
                           <td>{hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : v.hostUser?.email}</td>
                           <td>{v.purpose}</td>
                           <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
@@ -331,6 +502,13 @@ export default function SecurityVisitorsPage() {
       <WalkInModal open={showWalkIn} onClose={() => setShowWalkIn(false)} onSuccess={() => { setShowWalkIn(false); load(); }} />
       {checkInTarget && <CheckInModal visit={checkInTarget} open={!!checkInTarget} onClose={() => setCheckInTarget(null)} onSuccess={() => { setCheckInTarget(null); load(); setVerifyResult(null); }} />}
       <GateQrPosterModal open={showQrPoster} onClose={() => setShowQrPoster(false)} />
+      <QRScannerModal
+        isOpen={showScanner}
+        onClose={() => setShowScanner(false)}
+        onScanSuccess={(decodedText) => {
+          verify(decodedText);
+        }}
+      />
     </AppLayout>
   );
 }
@@ -384,10 +562,13 @@ function GateQrPosterModal({ open, onClose }: { open: boolean; onClose: () => vo
             boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
             marginBottom: 20
           }}>
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(registerUrl || 'http://localhost:3000/visitor-register')}`}
-              alt="Gate Registration QR"
-              style={{ width: 200, height: 200, display: 'block' }}
+            <QRCodeSVG
+              value={registerUrl || 'http://localhost:3000/visitor-register'}
+              size={200}
+              level="H"
+              includeMargin={true}
+              bgColor="#ffffff"
+              fgColor="#0f172a"
             />
           </div>
 
@@ -397,10 +578,10 @@ function GateQrPosterModal({ open, onClose }: { open: boolean; onClose: () => vo
               <span>1.</span><span>Scan this QR code using your mobile phone camera.</span>
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-              <span>2.</span><span>Fill in your details and select the employee you came to meet.</span>
+              <span>2.</span><span>Fill in your details and select the employee you came to meet (No login required).</span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <span>3.</span><span>Receive your approved digital pass on your phone & WhatsApp, then show it to Security.</span>
+              <span>3.</span><span>Receive your approved digital pass with QR code, then show to Security at gate.</span>
             </div>
           </div>
         </div>

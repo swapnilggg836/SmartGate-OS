@@ -20,52 +20,34 @@ function EmployeeDashboard() {
   const emp = user?.employee;
 
   const [data, setData] = useState<any>({
-    balances: [],
     exitRequests: [],
-    leaveRequests: [],
     activePass: null,
     totalExits: 0,
-    totalLeavesUsed: 0,
     passesCount: 0,
-    attendanceRate: 100
+    pendingExits: 0,
+    approvedExits: 0
   });
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   const loadData = React.useCallback(() => {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-
     Promise.all([
-      api.get('/leave/balances'),
       api.get('/exit-requests'),
-      api.get('/leave/requests'),
       api.get('/gate-passes/my-active').catch(() => ({ data: { data: null } })),
-      api.get('/gate-passes').catch(() => ({ data: { data: [] } })),
-      api.get(`/attendance?month=${month}&year=${year}`).catch(() => ({ data: { data: [] } }))
-    ]).then(([bal, exit, leave, activePass, passes, att]) => {
-      const balancesList = bal.data?.data || [];
+      api.get('/gate-passes').catch(() => ({ data: { data: [] } }))
+    ]).then(([exit, activePass, passes]) => {
       const exitList = exit.data?.data || [];
-      const leaveList = leave.data?.data || [];
       const passList = passes.data?.data || [];
-      const attList = att.data?.data || [];
-
-      const totalLeavesUsed = balancesList.reduce((sum: number, b: any) => sum + (b.usedDays || 0), 0);
-      const presentCount = attList.filter((a: any) => a.status === 'PRESENT').length;
-      const totalAttDays = attList.length;
-      const attendanceRate = totalAttDays > 0 ? Math.round((presentCount / totalAttDays) * 100) : 100;
+      const pendingExits = exitList.filter((r: any) => r.status.includes('PENDING')).length;
+      const approvedExits = exitList.filter((r: any) => r.status === 'APPROVED' || r.status === 'COMPLETED').length;
 
       setData({
-        balances: balancesList,
         exitRequests: exitList,
-        leaveRequests: leaveList,
         activePass: activePass.data?.data,
         totalExits: exitList.length,
-        totalLeavesUsed,
         passesCount: passList.length,
-        attendanceRate
+        pendingExits,
+        approvedExits
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -92,9 +74,6 @@ function EmployeeDashboard() {
               <button className="btn btn-primary btn-sm" onClick={() => setShowExitModal(true)}>
                 <Plus size={14} /> Apply Exit Permission
               </button>
-              <button className="btn btn-outline btn-sm" onClick={() => setShowLeaveModal(true)}>
-                <Calendar size={14} /> Apply Leave
-              </button>
             </div>
           </div>
         </div>
@@ -113,7 +92,7 @@ function EmployeeDashboard() {
         </div>
       )}
 
-      {/* Employee Performance & Action Activity Scorecard */}
+      {/* Employee Exit Permission & Pass Summary */}
       <div>
         <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <TrendingUp size={16} style={{ color: 'var(--blue-700)' }} /> My Activity & Action Summary
@@ -127,13 +106,6 @@ function EmployeeDashboard() {
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-card-icon amber"><Calendar size={20} /></div>
-            <div>
-              <div className="stat-card-value">{data.totalLeavesUsed}</div>
-              <div className="stat-card-label">Approved Leave Days Taken</div>
-            </div>
-          </div>
-          <div className="stat-card">
             <div className="stat-card-icon green"><QrCode size={20} /></div>
             <div>
               <div className="stat-card-value">{data.passesCount}</div>
@@ -141,103 +113,66 @@ function EmployeeDashboard() {
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-card-icon purple"><TrendingUp size={20} /></div>
+            <div className="stat-card-icon amber"><ClipboardList size={20} /></div>
             <div>
-              <div className="stat-card-value">{data.attendanceRate}%</div>
-              <div className="stat-card-label">Monthly Attendance Score</div>
+              <div className="stat-card-value">{data.pendingExits}</div>
+              <div className="stat-card-label">Pending Approval</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-icon green"><CheckCircle2 size={20} /></div>
+            <div>
+              <div className="stat-card-value">{data.approvedExits}</div>
+              <div className="stat-card-label">Approved & Completed</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Leave Balances */}
-      <div>
-        <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Calendar size={16} style={{ color: 'var(--blue-700)' }} /> Leave Balances
-        </h3>
-        {data.balances.length === 0 ? (
-          <p style={{ color: 'var(--slate-400)', fontSize: '0.8125rem' }}>No leave balances found.</p>
+      {/* Recent Exit Permission Requests */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title"><FileText size={15} /> Recent Exit Permission Requests</h3>
+          <a href="/requests" style={{ fontSize: '0.75rem', color: 'var(--blue-700)', textDecoration: 'none', fontWeight: 600 }}>View All</a>
+        </div>
+        {data.exitRequests.length === 0 ? (
+          <div className="empty-state" style={{ padding: '32px 24px' }}>
+            <FileText size={32} />
+            <p>No exit requests yet</p>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowExitModal(true)} style={{ marginTop: 8 }}>
+              <Plus size={14} /> Apply Now
+            </button>
+          </div>
         ) : (
-          <div className="grid-4">
-            {data.balances.map((b: any) => (
-              <div key={b.id} className="card">
-                <div className="card-body" style={{ padding: '16px' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginBottom: 6 }}>{b.leaveType?.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--blue-700)' }}>
-                      {Math.max(0, b.totalDays - b.usedDays - b.pendingDays).toFixed(0)}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>/ {b.totalDays} days left</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, fontSize: '0.6875rem', color: 'var(--slate-500)' }}>
-                    <span>Used: <strong>{b.usedDays}</strong></span>
-                    <span>Pending: <strong>{b.pendingDays}</strong></span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Destination</th>
+                  <th>Exit Date</th>
+                  <th>Exit Window</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.exitRequests.slice(0, 5).map((r: any) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.destination}</td>
+                    <td>{fmtDate(r.exitDate)}</td>
+                    <td className="font-mono">{r.exitTime} → {r.expectedReturnTime}</td>
+                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</td>
+                    <td><span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* Recent Requests */}
-      <div className="grid-2">
-        {/* Exit Requests */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><FileText size={15} /> Recent Exit Requests</h3>
-            <a href="/requests" style={{ fontSize: '0.75rem', color: 'var(--blue-700)', textDecoration: 'none', fontWeight: 600 }}>View All</a>
-          </div>
-          {data.exitRequests.length === 0 ? (
-            <div className="empty-state" style={{ padding: '24px' }}>
-              <FileText size={28} />
-              <p>No exit requests yet</p>
-            </div>
-          ) : (
-            <div style={{ padding: '8px 0' }}>
-              {data.exitRequests.slice(0, 4).map((r: any) => (
-                <div key={r.id} style={{ padding: '10px 16px', borderBottom: '1px solid var(--slate-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--slate-800)' }}>{r.destination}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{fmtDate(r.exitDate)} · {r.exitTime}</div>
-                  </div>
-                  <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Leave Requests */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><Calendar size={15} /> Recent Leave Requests</h3>
-            <a href="/requests" style={{ fontSize: '0.75rem', color: 'var(--blue-700)', textDecoration: 'none', fontWeight: 600 }}>View All</a>
-          </div>
-          {data.leaveRequests.length === 0 ? (
-            <div className="empty-state" style={{ padding: '24px' }}>
-              <Calendar size={28} />
-              <p>No leave requests yet</p>
-            </div>
-          ) : (
-            <div style={{ padding: '8px 0' }}>
-              {data.leaveRequests.slice(0, 4).map((r: any) => (
-                <div key={r.id} style={{ padding: '10px 16px', borderBottom: '1px solid var(--slate-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--slate-800)' }}>{r.leaveType?.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{fmtDate(r.fromDate)} → {fmtDate(r.toDate)}</div>
-                  </div>
-                  <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Modals */}
+      {/* Modal */}
       <ExitRequestModal open={showExitModal} onClose={() => setShowExitModal(false)} onSuccess={() => { setShowExitModal(false); loadData(); }} />
-      <LeaveRequestModal open={showLeaveModal} onClose={() => setShowLeaveModal(false)} onSuccess={() => { setShowLeaveModal(false); loadData(); }} />
     </div>
   );
 }
@@ -249,37 +184,31 @@ function ManagerDashboard() {
   const { user } = useAuth();
   const emp = user?.employee;
   const [pending, setPending] = useState<any[]>([]);
-  const [stats, setStats] = useState({ exits: 0, leaves: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ exits: 0, approved: 0, rejected: 0 });
   const [loading, setLoading] = useState(true);
-  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string; type: string }>({ open: false, id: '', type: '' });
+  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [rejectComment, setRejectComment] = useState('');
 
   const load = () => {
-    Promise.all([
-      api.get('/exit-requests/pending'),
-      api.get('/leave/requests/pending'),
-    ]).then(([exits, leaves]) => {
-      const all = [
-        ...(exits.data?.data || []).map((r: any) => ({ ...r, _type: 'exit' })),
-        ...(leaves.data?.data || []).map((r: any) => ({ ...r, _type: 'leave' }))
-      ];
+    api.get('/exit-requests/pending').then(exits => {
+      const all = exits.data?.data || [];
       setPending(all);
-      setStats({ exits: (exits.data?.data || []).length, leaves: (leaves.data?.data || []).length, approved: 0, rejected: 0 });
+      setStats({ exits: all.length, approved: 0, rejected: 0 });
+    }).catch(() => {
+      setPending([]);
     }).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
 
-  const approve = async (id: string, type: string) => {
-    const url = type === 'exit' ? `/exit-requests/${id}/review` : `/leave/requests/${id}/review`;
-    await api.patch(url, { status: 'APPROVED', comments: 'Approved' });
+  const approve = async (id: string) => {
+    await api.patch(`/exit-requests/${id}/review`, { status: 'APPROVED', comments: 'Approved' });
     load();
   };
 
   const reject = async () => {
-    const url = rejectModal.type === 'exit' ? `/exit-requests/${rejectModal.id}/review` : `/leave/requests/${rejectModal.id}/review`;
-    await api.patch(url, { status: 'REJECTED', comments: rejectComment });
-    setRejectModal({ open: false, id: '', type: '' });
+    await api.patch(`/exit-requests/${rejectModal.id}/review`, { status: 'REJECTED', comments: rejectComment });
+    setRejectModal({ open: false, id: '' });
     setRejectComment('');
     load();
   };
@@ -296,32 +225,32 @@ function ManagerDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid-4">
+      <div className="grid-3">
         <div className="stat-card">
           <div className="stat-card-icon amber"><Clock size={20} /></div>
-          <div><div className="stat-card-value">{stats.exits}</div><div className="stat-card-label">Pending Exit Requests</div></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon blue"><Calendar size={20} /></div>
-          <div><div className="stat-card-value">{stats.leaves}</div><div className="stat-card-label">Pending Leave Requests</div></div>
+          <div><div className="stat-card-value">{pending.length}</div><div className="stat-card-label">Pending Exit Requests</div></div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon green"><CheckCircle2 size={20} /></div>
-          <div><div className="stat-card-value">{pending.length}</div><div className="stat-card-label">Total Pending</div></div>
+          <div><div className="stat-card-value">{pending.filter(p => !p.isUrgent).length}</div><div className="stat-card-label">Routine Requests</div></div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-icon red" style={{ background: 'var(--red-50)', color: 'var(--red-600)' }}><AlertTriangle size={20} /></div>
+          <div><div className="stat-card-value" style={{ color: 'var(--red-600)' }}>{pending.filter(p => p.isUrgent).length}</div><div className="stat-card-label">Urgent Exit Requests</div></div>
         </div>
       </div>
 
       {/* Pending Approvals */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title"><ClipboardList size={15} /> Pending Approvals — Your Team</h3>
+          <h3 className="card-title"><ClipboardList size={15} /> Pending Exit Approvals — Your Team</h3>
           <span className="badge badge-amber">{pending.length} pending</span>
         </div>
         {pending.length === 0 ? (
           <div className="empty-state">
             <CheckCircle2 size={36} />
             <h4>All Caught Up!</h4>
-            <p>No pending approvals from your team.</p>
+            <p>No pending exit permissions from your team.</p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -329,8 +258,9 @@ function ManagerDashboard() {
               <thead>
                 <tr>
                   <th>Employee</th>
-                  <th>Type</th>
-                  <th>Details</th>
+                  <th>Destination</th>
+                  <th>Exit Window</th>
+                  <th>Reason</th>
                   <th>Submitted</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -343,27 +273,23 @@ function ManagerDashboard() {
                       <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.employee?.firstName} {r.employee?.lastName}</div>
                       <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)' }}>{r.employee?.employeeCode} · {r.employee?.department?.name}</div>
                     </td>
-                    <td>
-                      <span className={`badge ${r._type === 'exit' ? 'badge-blue' : 'badge-slate'}`}>
-                        {r._type === 'exit' ? 'Exit Permission' : 'Leave'}
-                      </span>
-                    </td>
+                    <td style={{ fontWeight: 600 }}>{r.destination}</td>
                     <td style={{ fontSize: '0.8125rem' }}>
-                      {r._type === 'exit' ? (
-                        <><div><strong>{r.destination}</strong></div><div style={{ color: 'var(--slate-500)', fontSize: '0.75rem' }}>{fmtDate(r.exitDate)} · {r.exitTime} → {r.expectedReturnTime}</div></>
-                      ) : (
-                        <><div><strong>{r.leaveType?.name}</strong></div><div style={{ color: 'var(--slate-500)', fontSize: '0.75rem' }}>{fmtDate(r.fromDate)} → {fmtDate(r.toDate)} ({r.totalDays} days)</div></>
-                      )}
-                      <div style={{ color: 'var(--slate-500)', fontSize: '0.75rem', marginTop: 2, maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.reason}</div>
+                      <div>{fmtDate(r.exitDate)}</div>
+                      <div className="font-mono" style={{ color: 'var(--slate-500)', fontSize: '0.75rem' }}>{r.exitTime} → {r.expectedReturnTime}</div>
                     </td>
+                    <td style={{ color: 'var(--slate-600)', fontSize: '0.75rem', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.reason}</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{fmtDate(r.createdAt)}</td>
-                    <td><span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span></td>
+                    <td>
+                      <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+                      {r.isUrgent && <span className="badge badge-danger" style={{ marginLeft: 4 }}>🚨 URGENT</span>}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-success btn-sm" onClick={() => approve(r.id, r._type)}>
+                        <button className="btn btn-success btn-sm" onClick={() => approve(r.id)}>
                           <CheckCircle2 size={13} /> Approve
                         </button>
-                        <button className="btn btn-danger-outline btn-sm" onClick={() => { setRejectModal({ open: true, id: r.id, type: r._type }); setRejectComment(''); }}>
+                        <button className="btn btn-danger-outline btn-sm" onClick={() => { setRejectModal({ open: true, id: r.id }); setRejectComment(''); }}>
                           <XCircle size={13} /> Reject
                         </button>
                       </div>
@@ -377,9 +303,9 @@ function ManagerDashboard() {
       </div>
 
       {/* Reject Modal */}
-      <Modal open={rejectModal.open} onClose={() => setRejectModal({ open: false, id: '', type: '' })} title="Reject Request — Add Reason"
+      <Modal open={rejectModal.open} onClose={() => setRejectModal({ open: false, id: '' })} title="Reject Request — Add Reason"
         footer={
-          <><button className="btn btn-ghost" onClick={() => setRejectModal({ open: false, id: '', type: '' })}>Cancel</button>
+          <><button className="btn btn-ghost" onClick={() => setRejectModal({ open: false, id: '' })}>Cancel</button>
             <button className="btn btn-danger" onClick={reject} disabled={!rejectComment.trim()}>Confirm Reject</button></>
         }
       >
@@ -402,19 +328,15 @@ function HRDashboard() {
   const [pending, setPending] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({});
   const [loading, setLoading] = useState(true);
-  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string; type: string }>({ open: false, id: '', type: '' });
+  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [rejectComment, setRejectComment] = useState('');
 
   const load = () => {
     Promise.all([
       api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } })),
-      api.get('/leave/requests/pending-hr').catch(() => ({ data: { data: [] } })),
       api.get('/users/employees').catch(() => ({ data: { data: [] } }))
-    ]).then(([exits, leaves, emps]) => {
-      const all = [
-        ...(exits.data?.data || []).map((r: any) => ({ ...r, _type: 'exit' })),
-        ...(leaves.data?.data || []).map((r: any) => ({ ...r, _type: 'leave' }))
-      ];
+    ]).then(([exits, emps]) => {
+      const all = exits.data?.data || [];
       setPending(all);
       setStats({ totalEmployees: (emps.data?.data || []).length });
     }).finally(() => setLoading(false));
@@ -422,16 +344,14 @@ function HRDashboard() {
 
   useEffect(() => { load(); }, []);
 
-  const approve = async (id: string, type: string) => {
-    const url = type === 'exit' ? `/exit-requests/${id}/review` : `/leave/requests/${id}/review`;
-    await api.patch(url, { status: 'APPROVED', comments: 'HR Approved' });
+  const approve = async (id: string) => {
+    await api.patch(`/exit-requests/${id}/review`, { status: 'APPROVED', comments: 'HR Approved' });
     load();
   };
 
   const reject = async () => {
-    const url = rejectModal.type === 'exit' ? `/exit-requests/${rejectModal.id}/review` : `/leave/requests/${rejectModal.id}/review`;
-    await api.patch(url, { status: 'REJECTED', comments: rejectComment });
-    setRejectModal({ open: false, id: '', type: '' });
+    await api.patch(`/exit-requests/${rejectModal.id}/review`, { status: 'REJECTED', comments: rejectComment });
+    setRejectModal({ open: false, id: '' });
     load();
   };
 
@@ -442,14 +362,14 @@ function HRDashboard() {
       <div className="card">
         <div className="card-body">
           <h2>HR Dashboard — Welcome, {emp?.firstName || 'HR'}!</h2>
-          <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 2 }}>Human Resources · Second-level approval authority</p>
+          <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 2 }}>Human Resources · Second-level exit permission authority</p>
         </div>
       </div>
 
       <div className="grid-4">
         <div className="stat-card">
           <div className="stat-card-icon amber"><ClipboardList size={20} /></div>
-          <div><div className="stat-card-value">{pending.length}</div><div className="stat-card-label">Awaiting HR Approval</div></div>
+          <div><div className="stat-card-value">{pending.length}</div><div className="stat-card-label">Awaiting HR Clearance</div></div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon blue"><Users size={20} /></div>
@@ -460,20 +380,20 @@ function HRDashboard() {
       {/* HR Pending Queue */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title"><ClipboardList size={15} /> Awaiting HR Review</h3>
+          <h3 className="card-title"><ClipboardList size={15} /> Awaiting HR Exit Clearance</h3>
           {pending.length > 0 && <span className="badge badge-amber">{pending.length} pending</span>}
         </div>
         {pending.length === 0 ? (
           <div className="empty-state">
             <CheckCircle2 size={36} />
             <h4>No HR Reviews Pending</h4>
-            <p>All requests have been processed.</p>
+            <p>All exit permission requests have been processed.</p>
           </div>
         ) : (
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>Employee</th><th>Type</th><th>Details</th><th>Manager Status</th><th>Actions</th></tr>
+                <tr><th>Employee</th><th>Destination</th><th>Exit Window</th><th>Manager Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {pending.map((r) => (
@@ -482,15 +402,16 @@ function HRDashboard() {
                       <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.employee?.firstName} {r.employee?.lastName}</div>
                       <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)' }}>{r.employee?.employeeCode}</div>
                     </td>
-                    <td><span className={`badge ${r._type === 'exit' ? 'badge-blue' : 'badge-slate'}`}>{r._type === 'exit' ? 'Exit' : 'Leave'}</span></td>
+                    <td><strong>{r.destination}</strong></td>
                     <td style={{ fontSize: '0.8125rem' }}>
-                      {r._type === 'exit' ? <><strong>{r.destination}</strong><div style={{ color: 'var(--slate-500)', fontSize: '0.75rem' }}>{fmtDate(r.exitDate)}</div></> : <><strong>{r.leaveType?.name}</strong><div style={{ color: 'var(--slate-500)', fontSize: '0.75rem' }}>{fmtDate(r.fromDate)} → {fmtDate(r.toDate)}</div></>}
+                      <div>{fmtDate(r.exitDate)}</div>
+                      <div className="font-mono" style={{ color: 'var(--slate-500)', fontSize: '0.75rem' }}>{r.exitTime} → {r.expectedReturnTime}</div>
                     </td>
                     <td><span className="badge badge-green">Manager Approved</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-success btn-sm" onClick={() => approve(r.id, r._type)}><CheckCircle2 size={13} /> Approve</button>
-                        <button className="btn btn-danger-outline btn-sm" onClick={() => { setRejectModal({ open: true, id: r.id, type: r._type }); setRejectComment(''); }}><XCircle size={13} /> Reject</button>
+                        <button className="btn btn-success btn-sm" onClick={() => approve(r.id)}><CheckCircle2 size={13} /> Approve</button>
+                        <button className="btn btn-danger-outline btn-sm" onClick={() => { setRejectModal({ open: true, id: r.id }); setRejectComment(''); }}><XCircle size={13} /> Reject</button>
                       </div>
                     </td>
                   </tr>
@@ -501,8 +422,8 @@ function HRDashboard() {
         )}
       </div>
 
-      <Modal open={rejectModal.open} onClose={() => setRejectModal({ open: false, id: '', type: '' })} title="Reject — Add Reason"
-        footer={<><button className="btn btn-ghost" onClick={() => setRejectModal({ open: false, id: '', type: '' })}>Cancel</button><button className="btn btn-danger" onClick={reject} disabled={!rejectComment.trim()}>Confirm Reject</button></>}
+      <Modal open={rejectModal.open} onClose={() => setRejectModal({ open: false, id: '' })} title="Reject — Add Reason"
+        footer={<><button className="btn btn-ghost" onClick={() => setRejectModal({ open: false, id: '' })}>Cancel</button><button className="btn btn-danger" onClick={reject} disabled={!rejectComment.trim()}>Confirm Reject</button></>}
       >
         <div className="form-group">
           <label className="form-label">Rejection Reason <span className="required">*</span></label>
@@ -705,13 +626,13 @@ function AdminDashboard() {
       api.get('/users/employees'),
       api.get('/departments'),
       api.get('/exit-requests/pending'),
-      api.get('/leave/requests/pending'),
-    ]).then(([emps, depts, exits, leaves]) => {
+      api.get('/gate-passes/today').catch(() => ({ data: { data: [] } })),
+    ]).then(([emps, depts, exits, passes]) => {
       setStats({
         employees: (emps.data?.data || []).length,
         departments: (depts.data?.data || []).length,
         pendingExits: (exits.data?.data || []).length,
-        pendingLeaves: (leaves.data?.data || []).length,
+        todayPasses: (passes.data?.data || []).length,
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -741,8 +662,8 @@ function AdminDashboard() {
           <div><div className="stat-card-value">{stats.pendingExits}</div><div className="stat-card-label">Pending Exit Requests</div></div>
         </div>
         <div className="stat-card">
-          <div className="stat-card-icon amber"><Calendar size={20} /></div>
-          <div><div className="stat-card-value">{stats.pendingLeaves}</div><div className="stat-card-label">Pending Leave Requests</div></div>
+          <div className="stat-card-icon purple" style={{ background: '#f5f3ff', color: '#7c3aed' }}><QrCode size={20} /></div>
+          <div><div className="stat-card-value" style={{ color: '#7c3aed' }}>{stats.todayPasses}</div><div className="stat-card-label">Today's Gate Passes</div></div>
         </div>
       </div>
 
@@ -753,7 +674,7 @@ function AdminDashboard() {
             <a href="/employees" className="btn btn-outline btn-full" style={{ justifyContent: 'flex-start' }}><Users size={15} /> Manage Employees</a>
             <a href="/admin/users" className="btn btn-outline btn-full" style={{ justifyContent: 'flex-start' }}><Users size={15} /> Manage User Roles</a>
             <a href="/admin/departments" className="btn btn-outline btn-full" style={{ justifyContent: 'flex-start' }}><FileText size={15} /> Manage Departments</a>
-            <a href="/admin/leave-types" className="btn btn-outline btn-full" style={{ justifyContent: 'flex-start' }}><Calendar size={15} /> Manage Leave Types</a>
+            <a href="/admin/visitors" className="btn btn-outline btn-full" style={{ justifyContent: 'flex-start' }}><Users size={15} /> Visitor Management</a>
             <a href="/admin/audit" className="btn btn-outline btn-full" style={{ justifyContent: 'flex-start' }}><ClipboardList size={15} /> View Audit Logs</a>
           </div>
         </div>
@@ -783,7 +704,7 @@ function AdminDashboard() {
 // EXIT REQUEST MODAL
 // =============================================
 function ExitRequestModal({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
-  const [form, setForm] = useState({ reason: '', exitDate: '', exitTime: '14:00', expectedReturnTime: '17:00', destination: '', description: '', isUrgent: false, requiresHrApproval: false });
+  const [form, setForm] = useState({ reason: '', exitDate: '', exitTime: '14:00', expectedReturnTime: '17:00', destination: '', description: '', isUrgent: false, requiresHrApproval: true });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -838,75 +759,10 @@ function ExitRequestModal({ open, onClose, onSuccess }: { open: boolean; onClose
           <textarea className="form-control" rows={2} placeholder="Additional details..." value={form.description} onChange={set('description')} />
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.875rem', color: 'var(--slate-600)' }}>
-            <input type="checkbox" checked={form.requiresHrApproval} onChange={setBool('requiresHrApproval')} style={{ width: 16, height: 16, accentColor: 'var(--blue-600)' }} />
-            Requires HR Approval
-          </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.875rem', color: 'var(--red-600)', fontWeight: 600 }}>
             <input type="checkbox" checked={form.isUrgent} onChange={setBool('isUrgent')} style={{ width: 16, height: 16, accentColor: '#dc2626' }} />
             🚨 Mark as Urgent (Super Admin notified)
           </label>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-// =============================================
-// LEAVE REQUEST MODAL
-// =============================================
-function LeaveRequestModal({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
-  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
-  const [form, setForm] = useState({ leaveTypeId: '', fromDate: '', toDate: '', reason: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (open) api.get('/leave/types').then(r => { setLeaveTypes(r.data?.data || []); if (r.data?.data?.[0]) setForm(f => ({ ...f, leaveTypeId: r.data.data[0].id })); });
-  }, [open]);
-
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
-    try {
-      await api.post('/leave/requests', form);
-      onSuccess();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to submit request');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} title="Apply for Leave"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" form="leave-form" type="submit" disabled={submitting}>{submitting ? <Spinner white size="sm" /> : null} Submit Leave Request</button></>}
-    >
-      <form id="leave-form" onSubmit={submit} className="space-y-3">
-        {error && <div className="alert alert-error"><AlertTriangle size={14} /><span>{error}</span></div>}
-        <div className="form-group">
-          <label className="form-label">Leave Type <span className="required">*</span></label>
-          <select className="form-control" value={form.leaveTypeId} onChange={set('leaveTypeId')} required>
-            <option value="">Select Leave Type</option>
-            {leaveTypes.map(lt => <option key={lt.id} value={lt.id}>{lt.name}</option>)}
-          </select>
-        </div>
-        <div className="form-grid">
-          <div className="form-group">
-            <label className="form-label">From Date <span className="required">*</span></label>
-            <input type="date" className="form-control" value={form.fromDate} onChange={set('fromDate')} required min={new Date().toISOString().split('T')[0]} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">To Date <span className="required">*</span></label>
-            <input type="date" className="form-control" value={form.toDate} onChange={set('toDate')} required min={form.fromDate || new Date().toISOString().split('T')[0]} />
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Reason <span className="required">*</span></label>
-          <textarea className="form-control" rows={3} placeholder="Reason for leave..." value={form.reason} onChange={set('reason')} required />
         </div>
       </form>
     </Modal>
@@ -919,37 +775,27 @@ function LeaveRequestModal({ open, onClose, onSuccess }: { open: boolean; onClos
 function GMDashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<any>(null);
-  const [criticalLeaves, setCriticalLeaves] = useState<any[]>([]);
   const [criticalExits, setCriticalExits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionModal, setActionModal] = useState<{ open: boolean; id: string; type: 'leave' | 'exit'; action: 'APPROVE' | 'REJECT' | 'SEND_BACK' }>({ open: false, id: '', type: 'leave', action: 'APPROVE' });
+  const [actionModal, setActionModal] = useState<{ open: boolean; id: string; action: 'APPROVE' | 'REJECT' | 'SEND_BACK' }>({ open: false, id: '', action: 'APPROVE' });
   const [comments, setComments] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   const load = () => {
     setLoading(true);
     Promise.all([
       api.get('/users/company/summary').catch(() => ({ data: { data: null } })),
-      api.get('/leave/requests').catch(() => ({ data: { data: [] } })),
       api.get('/exit-requests').catch(() => ({ data: { data: [] } })),
-    ]).then(([sumRes, leaveRes, exitRes]) => {
+    ]).then(([sumRes, exitRes]) => {
       setSummary(sumRes.data?.data);
-      const allLeaves = leaveRes.data?.data || [];
       const allExits = exitRes.data?.data || [];
-
-      // GM sees: Long leave (>2 days), Critical leaves, or Pending GM/HR
-      const gmLeaves = allLeaves.filter((l: any) =>
-        l.isCritical || l.totalDays > 2 || ['PENDING_GM', 'PENDING_HR', 'PENDING_SUPER_ADMIN'].includes(l.status)
-      );
 
       // GM sees: Urgent exits, Critical exits, or Pending GM
       const gmExits = allExits.filter((e: any) =>
         e.isUrgent || ['PENDING_GM', 'PENDING_HR'].includes(e.status)
       );
 
-      setCriticalLeaves(gmLeaves);
       setCriticalExits(gmExits);
     }).finally(() => setLoading(false));
   };
@@ -961,9 +807,7 @@ function GMDashboard() {
   const handleAction = async () => {
     setSubmitting(true);
     try {
-      const url = actionModal.type === 'leave'
-        ? `/leave/requests/${actionModal.id}/review`
-        : `/exit-requests/${actionModal.id}/review`;
+      const url = `/exit-requests/${actionModal.id}/review`;
 
       const statusMap: Record<string, string> = {
         APPROVE: 'APPROVED',
@@ -976,7 +820,7 @@ function GMDashboard() {
         comments: comments || `GM ${actionModal.action} decision`
       });
 
-      setActionModal({ open: false, id: '', type: 'leave', action: 'APPROVE' });
+      setActionModal({ open: false, id: '', action: 'APPROVE' });
       setComments('');
       load();
     } catch (err: any) {
@@ -990,8 +834,7 @@ function GMDashboard() {
 
   const overview = summary?.overview || {};
   const deptSummary = summary?.departmentSummary || [];
-  const totalCriticalPending = criticalLeaves.filter(l => ['PENDING_GM', 'PENDING_HR', 'PENDING_MANAGER'].includes(l.status)).length +
-    criticalExits.filter(e => ['PENDING_GM', 'PENDING_HR', 'PENDING_MANAGER'].includes(e.status)).length;
+  const totalCriticalPending = criticalExits.filter(e => ['PENDING_GM', 'PENDING_HR', 'PENDING_MANAGER'].includes(e.status)).length;
 
   return (
     <div className="space-y-4">
@@ -1012,9 +855,6 @@ function GMDashboard() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-outline btn-sm" onClick={() => setShowLeaveModal(true)}>
-                <Calendar size={14} /> My Leave Request
-              </button>
               <button className="btn btn-primary btn-sm" onClick={() => setShowExitModal(true)}>
                 <Plus size={14} /> My Exit Permission
               </button>
@@ -1035,12 +875,6 @@ function GMDashboard() {
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--green-700)' }}>On-Site Today</div>
           <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--green-600)', marginTop: 2 }}>{overview.presentToday || 0}</div>
           <div style={{ fontSize: '0.68rem', color: 'var(--green-700)' }}>Active in premises</div>
-        </div>
-
-        <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid #8b5cf6' }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>On Approved Leave</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5cf6', marginTop: 2 }}>{overview.onLeaveToday || 0}</div>
-          <div style={{ fontSize: '0.68rem', color: '#7c3aed' }}>Scheduled absences</div>
         </div>
 
         <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid var(--amber-500)' }}>
@@ -1066,12 +900,12 @@ function GMDashboard() {
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--slate-800)' }}>
-            <AlertTriangle size={16} color="var(--red-600)" /> Critical Requests & Long Leave Escalations
+            <AlertTriangle size={16} color="var(--red-600)" /> Critical Requests & Urgent Exit Escalations
           </h3>
           <span className="badge badge-blue">Selective GM Scope</span>
         </div>
 
-        {criticalLeaves.length === 0 && criticalExits.length === 0 ? (
+        {criticalExits.length === 0 ? (
           <div className="empty-state">
             <CheckCircle2 size={36} color="var(--green-600)" />
             <h4>No Escalated Cases</h4>
@@ -1092,53 +926,6 @@ function GMDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {criticalLeaves.map(l => (
-                  <tr key={l.id}>
-                    <td>
-                      <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{l.employee?.firstName} {l.employee?.lastName}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{l.employee?.employeeCode} · {l.employee?.department?.name}</div>
-                    </td>
-                    <td>
-                      <span className="badge badge-blue" style={{ fontSize: '0.7rem' }}>
-                        {l.leaveType?.name || 'LEAVE'} {l.totalDays > 2 && '(LONG LEAVE)'}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8125rem' }}>{l.reason}</td>
-                    <td className="font-mono" style={{ fontSize: '0.78rem' }}>
-                      {fmtDate(l.fromDate)} → {fmtDate(l.toDate)} ({l.totalDays}d)
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, background: 'var(--green-50)', color: 'var(--green-700)', fontWeight: 600 }}>
-                          Mgr: ✓
-                        </span>
-                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: 4, background: 'var(--blue-50)', color: 'var(--blue-700)', fontWeight: 600 }}>
-                          HR: ✓
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge ${statusBadgeClass(l.status)}`}>{statusLabel(l.status)}</span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          className="btn btn-success btn-xs"
-                          onClick={() => setActionModal({ open: true, id: l.id, type: 'leave', action: 'APPROVE' })}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="btn btn-danger-outline btn-xs"
-                          onClick={() => setActionModal({ open: true, id: l.id, type: 'leave', action: 'REJECT' })}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-
                 {criticalExits.map(e => (
                   <tr key={e.id}>
                     <td>
@@ -1168,13 +955,13 @@ function GMDashboard() {
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
                           className="btn btn-success btn-xs"
-                          onClick={() => setActionModal({ open: true, id: e.id, type: 'exit', action: 'APPROVE' })}
+                          onClick={() => setActionModal({ open: true, id: e.id, action: 'APPROVE' })}
                         >
                           Approve
                         </button>
                         <button
                           className="btn btn-danger-outline btn-xs"
-                          onClick={() => setActionModal({ open: true, id: e.id, type: 'exit', action: 'REJECT' })}
+                          onClick={() => setActionModal({ open: true, id: e.id, action: 'REJECT' })}
                         >
                           Reject
                         </button>
@@ -1205,7 +992,6 @@ function GMDashboard() {
                   <th>Code</th>
                   <th>Total Staff</th>
                   <th>Present On-Site</th>
-                  <th>On Leave</th>
                   <th>Currently Outside</th>
                   <th>Overdue / Late</th>
                 </tr>
@@ -1217,7 +1003,6 @@ function GMDashboard() {
                     <td className="font-mono">{d.code}</td>
                     <td style={{ fontWeight: 600 }}>{d.total}</td>
                     <td><span className="badge badge-success">{d.present}</span></td>
-                    <td><span className="badge" style={{ background: '#ede9fe', color: '#7c3aed' }}>{d.onLeave}</span></td>
                     <td><span className="badge badge-amber">{d.outside}</span></td>
                     <td>
                       {d.late > 0 ? (
@@ -1237,11 +1022,11 @@ function GMDashboard() {
       {/* Action Modal */}
       <Modal
         open={actionModal.open}
-        onClose={() => setActionModal({ open: false, id: '', type: 'leave', action: 'APPROVE' })}
+        onClose={() => setActionModal({ open: false, id: '', action: 'APPROVE' })}
         title={`Executive Decision: ${actionModal.action}`}
         footer={
           <>
-            <button className="btn btn-ghost" onClick={() => setActionModal({ open: false, id: '', type: 'leave', action: 'APPROVE' })}>
+            <button className="btn btn-ghost" onClick={() => setActionModal({ open: false, id: '', action: 'APPROVE' })}>
               Cancel
             </button>
             <button
@@ -1256,7 +1041,7 @@ function GMDashboard() {
       >
         <div className="space-y-3">
           <p style={{ fontSize: '0.85rem', color: 'var(--slate-700)' }}>
-            You are recording an executive <strong>{actionModal.action}</strong> on this {actionModal.type} request.
+            You are recording an executive <strong>{actionModal.action}</strong> on this exit request.
           </p>
           <div className="form-group">
             <label className="form-label">Executive Notes / Reason</label>
@@ -1271,9 +1056,8 @@ function GMDashboard() {
         </div>
       </Modal>
 
-      {/* Personal Leave & Exit Modals for GM */}
+      {/* Personal Exit Modal for GM */}
       <ExitRequestModal open={showExitModal} onClose={() => setShowExitModal(false)} onSuccess={() => { setShowExitModal(false); load(); }} />
-      <LeaveRequestModal open={showLeaveModal} onClose={() => setShowLeaveModal(false)} onSuccess={() => { setShowLeaveModal(false); load(); }} />
     </div>
   );
 }

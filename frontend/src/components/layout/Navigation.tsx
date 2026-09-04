@@ -29,19 +29,16 @@ function useNavItems(role: string, pendingCount: number, unread: number): NavIte
     { label: 'Visitors', href: '/visitors', icon: <UserPlus size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SUPER_ADMIN', 'SECURITY_GUARD'] },
     // Authority connections
     { label: 'My Authorities', href: '/authority', icon: <UserCheck size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SECURITY_GUARD'] },
-    // Approvals (Manager, HR, GM, Super Admin)
-    { label: 'Approvals', href: '/approvals', icon: <ClipboardList size={16} />, badge: pendingCount || undefined, roles: ['MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
+    // Approvals (Manager, HR, GM - Super Admin oversees system data and does not have approvals)
+    { label: 'Approvals', href: '/approvals', icon: <ClipboardList size={16} />, badge: pendingCount || undefined, roles: ['MANAGER', 'HR', 'GM'] },
     // My Team (Manager/HR)
     { label: 'My Team', href: '/authority/my-team', icon: <Users size={16} />, roles: ['MANAGER', 'HR', 'GM'] },
     // Security Guard & Super Admin
     { label: 'Gate Security', href: '/security', icon: <Shield size={16} />, roles: ['SECURITY_GUARD', 'SUPER_ADMIN'] },
     { label: 'Visitor Console', href: '/security/visitors', icon: <UserPlus size={16} />, roles: ['SECURITY_GUARD', 'SUPER_ADMIN'] },
-    // Attendance
-    { label: 'Attendance', href: '/attendance', icon: <Calendar size={16} />, roles: ['EMPLOYEE', 'MANAGER', 'HR', 'GM', 'SUPER_ADMIN'] },
     // Employees (HR, Admin, Manager)
     { label: 'Employees', href: '/employees', icon: <Users size={16} />, roles: ['HR', 'SUPER_ADMIN', 'MANAGER'] },
     // Admin config
-    { label: 'Leave Types', href: '/admin/leave-types', icon: <BookOpen size={16} />, roles: ['HR', 'SUPER_ADMIN'] },
     { label: 'Visitor Mgmt', href: '/admin/visitors', icon: <UserPlus size={16} />, roles: ['SUPER_ADMIN', 'HR', 'GM'] },
     { label: 'Departments', href: '/admin/departments', icon: <Settings size={16} />, roles: ['SUPER_ADMIN'] },
     { label: 'Users', href: '/admin/users', icon: <UserCheck size={16} />, roles: ['SUPER_ADMIN'] },
@@ -97,7 +94,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
           <div className="sidebar-logo-text">
             SmartGate OS
-            <span>Leave & Gate Pass System</span>
+            <span>Exit & Gate Pass System</span>
           </div>
           <button
             onClick={onClose}

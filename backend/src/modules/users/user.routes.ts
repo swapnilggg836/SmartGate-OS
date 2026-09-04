@@ -556,7 +556,78 @@ router.get('/company/summary', authenticate, requireRoles(UserRole.SUPER_ADMIN, 
       }
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to fetch company summary' });
+    return res.status(500).json({ success: false, message: 'Failed to retrieve dashboard stats' });
+  }
+});
+
+// POST /api/users/:id/reset-password (Super Admin direct password reset)
+const adminResetPasswordSchema = z.object({
+  newPassword: z.string().min(6, 'Password must be at least 6 characters').optional()
+});
+
+router.post('/:id/reset-password', authenticate, requireRoles(UserRole.SUPER_ADMIN), validateBody(adminResetPasswordSchema), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    let { newPassword } = req.body;
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id },
+      include: { employee: true }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found in MySQL database.' });
+    }
+
+    // If no password provided, auto-generate a secure 8-character password
+    if (!newPassword || newPassword.trim().length === 0) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+      newPassword = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        passwordHash,
+        refreshToken: null // Invalidate existing active sessions to force re-login
+      }
+    });
+
+    // Send a notification to the user
+    await prisma.notification.create({
+      data: {
+        userId: targetUser.id,
+        title: '🔑 Password Reset by Administrator',
+        message: `Your account password has been reset by the System Administrator. If you did not request this, please contact HR/IT immediately.`,
+        type: 'INFO',
+        priority: 'HIGH'
+      }
+    });
+
+    await logAudit({
+      userId: req.user!.userId,
+      userEmail: req.user!.email,
+      action: 'ADMIN_PASSWORD_RESET',
+      entity: 'User',
+      entityId: targetUser.id,
+      newValues: { targetUserEmail: targetUser.email, resetBy: req.user!.email },
+      req
+    });
+
+    return res.json({
+      success: true,
+      message: `Password for ${targetUser.email} has been reset successfully.`,
+      data: {
+        userId: targetUser.id,
+        email: targetUser.email,
+        newPassword
+      }
+    });
+  } catch (err: any) {
+    console.error('Admin password reset error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to reset password: ' + (err.message || '') });
   }
 });
 

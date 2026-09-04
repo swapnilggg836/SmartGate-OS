@@ -10,7 +10,7 @@ import {
   CheckCircle2, XCircle, AlertCircle, ArrowRight, Building2, Briefcase
 } from 'lucide-react';
 
-type SectionKey = 'overview' | 'history' | 'leave' | 'exit' | 'gate' | 'authority' | 'audit';
+type SectionKey = 'overview' | 'history' | 'exit' | 'gate' | 'authority' | 'audit';
 
 export default function EmployeeJourneyPage() {
   const params = useParams();
@@ -46,16 +46,15 @@ export default function EmployeeJourneyPage() {
     </AppLayout>
   );
 
-  const { employee, user, statusHistory, leaveRequests, exitRequests, gatePassHistory, authorityConnections, auditLogs } = data;
+  const { employee, user, statusHistory, exitRequests, gatePassHistory, authorityConnections, auditLogs } = data;
 
   const sections: { id: SectionKey; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'overview', label: 'Overview', icon: <UserCircle size={14} /> },
-    { id: 'history', label: 'Status History', icon: <Activity size={14} />, count: statusHistory.length },
-    { id: 'leave', label: 'Leave Requests', icon: <Calendar size={14} />, count: leaveRequests.length },
-    { id: 'exit', label: 'Exit Permissions', icon: <FileText size={14} />, count: exitRequests.length },
-    { id: 'gate', label: 'Gate Passes', icon: <Shield size={14} />, count: gatePassHistory.length },
-    { id: 'authority', label: 'Authority Connections', icon: <GitBranch size={14} />, count: authorityConnections.length },
-    { id: 'audit', label: 'Audit Trail', icon: <Clock size={14} />, count: auditLogs.length }
+    { id: 'history', label: 'Status History', icon: <Activity size={14} />, count: statusHistory?.length || 0 },
+    { id: 'exit', label: 'Exit Permissions', icon: <FileText size={14} />, count: exitRequests?.length || 0 },
+    { id: 'gate', label: 'Gate Passes', icon: <Shield size={14} />, count: gatePassHistory?.length || 0 },
+    { id: 'authority', label: 'Authority Connections', icon: <GitBranch size={14} />, count: authorityConnections?.length || 0 },
+    { id: 'audit', label: 'Audit Trail', icon: <Clock size={14} />, count: auditLogs?.length || 0 }
   ];
 
   const StatusBadge = ({ status }: { status: string }) => {
@@ -80,7 +79,7 @@ export default function EmployeeJourneyPage() {
 
   const exportToCsv = () => {
     if (!data) return;
-    const { employee, user, statusHistory, leaveRequests, exitRequests, gatePassHistory, authorityConnections, auditLogs } = data;
+    const { employee, user, statusHistory, exitRequests, gatePassHistory, authorityConnections, auditLogs } = data;
     const lines: string[] = [];
 
     lines.push('=== SMARTGATE OS - 360 DEGREE EMPLOYEE JOURNEY REPORT ===');
@@ -100,35 +99,28 @@ export default function EmployeeJourneyPage() {
 
     lines.push('--- STATUS & DEPARTMENT TRANSFER HISTORY ---');
     lines.push('Date,Change Type,Old Value,New Value,Notes');
-    statusHistory.forEach((h: any) => {
+    statusHistory?.forEach((h: any) => {
       lines.push(`${new Date(h.createdAt).toLocaleDateString()},${h.changeType},"${h.oldValue || ''}","${h.newValue || ''}","${h.notes || ''}"`);
-    });
-    lines.push('');
-
-    lines.push('--- LEAVE REQUESTS HISTORY ---');
-    lines.push('Request ID,Leave Type,From Date,To Date,Days,Status,Reason');
-    leaveRequests.forEach((l: any) => {
-      lines.push(`${l.id},${l.leaveType?.name || 'Leave'},${new Date(l.fromDate).toLocaleDateString()},${new Date(l.toDate).toLocaleDateString()},${l.totalDays},${l.status},"${(l.reason || '').replace(/"/g, '""')}"`);
     });
     lines.push('');
 
     lines.push('--- EXIT PERMISSIONS & GATE PASS HISTORY ---');
     lines.push('Pass Number,Exit Date,Exit Time,Expected Return,Actual Exit,Actual Return,Destination,Status');
-    gatePassHistory.forEach((g: any) => {
+    gatePassHistory?.forEach((g: any) => {
       lines.push(`${g.passNumber},${new Date(g.createdAt).toLocaleDateString()},${g.exitRequest?.exitTime || ''},${g.exitRequest?.expectedReturnTime || ''},${g.gateLogs?.[0]?.actualExitTime ? new Date(g.gateLogs[0].actualExitTime).toLocaleTimeString() : '—'},${g.gateLogs?.[0]?.actualReturnTime ? new Date(g.gateLogs[0].actualReturnTime).toLocaleTimeString() : '—'},"${g.exitRequest?.destination || ''}",${g.status}`);
     });
     lines.push('');
 
     lines.push('--- AUTHORITY CONNECTIONS ---');
     lines.push('Connection Type,Authority User,Status');
-    authorityConnections.forEach((c: any) => {
+    authorityConnections?.forEach((c: any) => {
       lines.push(`${c.connectionType},"${c.authorityUser?.employee?.firstName || ''} ${c.authorityUser?.employee?.lastName || c.authorityUser?.email}",${c.status}`);
     });
     lines.push('');
 
     lines.push('--- AUDIT TRAIL ---');
     lines.push('Action,Entity,Entity ID,Date');
-    auditLogs.forEach((a: any) => {
+    auditLogs?.forEach((a: any) => {
       lines.push(`${a.action},${a.entity},${a.entityId},${new Date(a.createdAt).toLocaleString()}`);
     });
 
@@ -197,14 +189,14 @@ export default function EmployeeJourneyPage() {
               display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px',
               borderRadius: '6px 6px 0 0', border: 'none', cursor: 'pointer',
               fontSize: '0.8rem', fontWeight: 600, background: 'transparent',
-              color: activeSection === s.id ? 'var(--primary-400)' : 'var(--text-secondary)',
-              borderBottom: activeSection === s.id ? '2px solid var(--primary-400)' : '2px solid transparent',
+              color: activeSection === s.id ? 'var(--blue-700)' : 'var(--slate-500)',
+              borderBottom: activeSection === s.id ? '2px solid var(--blue-700)' : '2px solid transparent',
               transition: 'all 0.15s'
             }}
           >
             {s.icon}{s.label}
             {s.count !== undefined && s.count > 0 && (
-              <span style={{ padding: '1px 6px', borderRadius: 10, background: 'var(--primary-600)', color: 'white', fontSize: '0.65rem', fontWeight: 700 }}>{s.count}</span>
+              <span style={{ padding: '1px 6px', borderRadius: 10, background: 'var(--blue-600)', color: 'white', fontSize: '0.65rem', fontWeight: 700 }}>{s.count}</span>
             )}
           </button>
         ))}
@@ -214,16 +206,14 @@ export default function EmployeeJourneyPage() {
       {activeSection === 'overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
           {[
-            { label: 'Leave Requests', value: leaveRequests.length, color: '#8B5CF6' },
-            { label: 'Approved Leaves', value: leaveRequests.filter((r: any) => r.status === 'APPROVED').length, color: 'var(--emerald-500)' },
-            { label: 'Exit Permissions', value: exitRequests.length, color: '#F59E0B' },
-            { label: 'Gate Passes', value: gatePassHistory.length, color: 'var(--primary-400)' },
-            { label: 'Authority Links', value: authorityConnections.length, color: '#EC4899' },
-            { label: 'Audit Events', value: auditLogs.length, color: 'var(--slate-400)' }
+            { label: 'Exit Permissions', value: exitRequests?.length || 0, color: '#F59E0B' },
+            { label: 'Gate Passes', value: gatePassHistory?.length || 0, color: 'var(--blue-600)' },
+            { label: 'Authority Links', value: authorityConnections?.length || 0, color: '#EC4899' },
+            { label: 'Audit Events', value: auditLogs?.length || 0, color: 'var(--slate-500)' }
           ].map(item => (
             <div key={item.label} className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: item.color }}>{item.value}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>{item.label}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 4 }}>{item.label}</div>
             </div>
           ))}
         </div>
@@ -232,52 +222,18 @@ export default function EmployeeJourneyPage() {
       {/* Status History */}
       {activeSection === 'history' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {statusHistory.length === 0 ? <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>No status changes recorded</div> : null}
-          {statusHistory.map((h: any) => (
+          {statusHistory?.length === 0 ? <div style={{ color: 'var(--slate-500)', textAlign: 'center', padding: 32 }}>No status changes recorded</div> : null}
+          {statusHistory?.map((h: any) => (
             <div key={h.id} className="card" style={{ padding: 14, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Activity size={14} color="var(--primary-400)" />
+                <Activity size={14} color="var(--blue-600)" />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{h.changeType.replace(/_/g, ' ')}</div>
-                {h.oldValue && <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>{h.oldValue} <ArrowRight size={10} style={{ verticalAlign: 'middle' }} /> {h.newValue}</div>}
-                {h.notes && <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 2 }}>{h.notes}</div>}
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--slate-800)' }}>{h.changeType.replace(/_/g, ' ')}</div>
+                {h.oldValue && <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 2 }}>{h.oldValue} <ArrowRight size={10} style={{ verticalAlign: 'middle' }} /> {h.newValue}</div>}
+                {h.notes && <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginTop: 2 }}>{h.notes}</div>}
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{new Date(h.createdAt).toLocaleString()}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Leave Requests */}
-      {activeSection === 'leave' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {leaveRequests.length === 0 ? <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>No leave requests</div> : null}
-          {leaveRequests.map((r: any) => (
-            <div key={r.id} className="card" style={{ padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.87rem', color: 'var(--text-primary)' }}>{r.leaveType?.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {new Date(r.fromDate).toLocaleDateString()} → {new Date(r.toDate).toLocaleDateString()} ({r.totalDays} days)
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 3 }}>{r.reason}</div>
-                </div>
-                <StatusBadge status={r.status} />
-              </div>
-              {r.approvals?.length > 0 && (
-                <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {r.approvals.map((a: any) => (
-                    <div key={a.id} style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {a.status === 'APPROVED' ? <CheckCircle2 size={11} color="var(--emerald-500)" /> : <XCircle size={11} color="var(--red-400)" />}
-                      {a.approver?.employee?.firstName} ({a.approverRole})
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
-                Submitted {new Date(r.createdAt).toLocaleString()}
-              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--slate-400)', flexShrink: 0 }}>{new Date(h.createdAt).toLocaleString()}</div>
             </div>
           ))}
         </div>
@@ -286,19 +242,19 @@ export default function EmployeeJourneyPage() {
       {/* Exit Permissions */}
       {activeSection === 'exit' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {exitRequests.length === 0 ? <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>No exit permission requests</div> : null}
-          {exitRequests.map((r: any) => (
+          {exitRequests?.length === 0 ? <div style={{ color: 'var(--slate-500)', textAlign: 'center', padding: 32 }}>No exit permission requests</div> : null}
+          {exitRequests?.map((r: any) => (
             <div key={r.id} className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.87rem', color: 'var(--text-primary)' }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.87rem', color: 'var(--slate-800)' }}>
                     {r.destination}
-                    {r.isUrgent && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: 'var(--red-400)', fontWeight: 700 }}>URGENT</span>}
+                    {r.isUrgent && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: 'var(--red-600)', fontWeight: 700 }}>URGENT</span>}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 2 }}>
                     {new Date(r.exitDate).toLocaleDateString()} · {r.exitTime} → {r.expectedReturnTime}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 2 }}>{r.reason}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginTop: 2 }}>{r.reason}</div>
                 </div>
                 <StatusBadge status={r.status} />
               </div>
@@ -308,12 +264,12 @@ export default function EmployeeJourneyPage() {
                     <div key={log.id} style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                       <span>Exit: <strong>{log.actualExitTime ? new Date(log.actualExitTime).toLocaleTimeString() : '—'}</strong></span>
                       <span>Return: <strong>{log.actualReturnTime ? new Date(log.actualReturnTime).toLocaleTimeString() : '—'}</strong></span>
-                      {log.lateMinutes > 0 && <span style={{ color: 'var(--red-400)' }}>Late: {log.lateMinutes}m</span>}
+                      {log.lateMinutes > 0 && <span style={{ color: 'var(--red-600)' }}>Late: {log.lateMinutes}m</span>}
                     </div>
                   ))}
                 </div>
               )}
-              <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>Submitted {new Date(r.createdAt).toLocaleString()}</div>
+              <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--slate-400)' }}>Submitted {new Date(r.createdAt).toLocaleString()}</div>
             </div>
           ))}
         </div>
@@ -322,13 +278,13 @@ export default function EmployeeJourneyPage() {
       {/* Gate Passes */}
       {activeSection === 'gate' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {gatePassHistory.length === 0 ? <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>No gate passes</div> : null}
-          {gatePassHistory.map((gp: any) => (
+          {gatePassHistory?.length === 0 ? <div style={{ color: 'var(--slate-500)', textAlign: 'center', padding: 32 }}>No gate passes</div> : null}
+          {gatePassHistory?.map((gp: any) => (
             <div key={gp.id} className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: 'var(--primary-400)', fontFamily: 'monospace', fontSize: '0.9rem' }}>{gp.passNumber}</div>
-                  <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--blue-700)', fontFamily: 'monospace', fontSize: '0.9rem' }}>{gp.passNumber}</div>
+                  <div style={{ fontSize: '0.73rem', color: 'var(--slate-500)', marginTop: 2 }}>
                     Valid: {new Date(gp.validFrom).toLocaleString()} → {new Date(gp.validUntil).toLocaleString()}
                   </div>
                 </div>
@@ -339,7 +295,7 @@ export default function EmployeeJourneyPage() {
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <span>Exit Status: <StatusBadge status={log.exitStatus} /></span>
                     <span>Return Status: <StatusBadge status={log.returnStatus} /></span>
-                    {log.lateMinutes > 0 && <span style={{ color: 'var(--red-400)', fontWeight: 700 }}>Late: {log.lateMinutes} min</span>}
+                    {log.lateMinutes > 0 && <span style={{ color: 'var(--red-600)', fontWeight: 700 }}>Late: {log.lateMinutes} min</span>}
                   </div>
                 </div>
               ))}
@@ -351,25 +307,25 @@ export default function EmployeeJourneyPage() {
       {/* Authority Connections */}
       {activeSection === 'authority' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {authorityConnections.length === 0 ? <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>No authority connections</div> : null}
-          {authorityConnections.map((conn: any) => (
+          {authorityConnections?.length === 0 ? <div style={{ color: 'var(--slate-500)', textAlign: 'center', padding: 32 }}>No authority connections</div> : null}
+          {authorityConnections?.map((conn: any) => (
             <div key={conn.id} className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                 <div>
-                  <div style={{ fontSize: '0.73rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--primary-400)', marginBottom: 4 }}>
+                  <div style={{ fontSize: '0.73rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--blue-700)', marginBottom: 4 }}>
                     {conn.connectionType.replace(/_/g, ' ')}
                   </div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.87rem' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--slate-800)', fontSize: '0.87rem' }}>
                     {conn.authorityUser?.employee?.firstName} {conn.authorityUser?.employee?.lastName}
-                    <span style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', marginLeft: 6 }}>({conn.authorityUser?.employee?.employeeCode})</span>
+                    <span style={{ fontSize: '0.73rem', color: 'var(--slate-500)', marginLeft: 6 }}>({conn.authorityUser?.employee?.employeeCode})</span>
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginTop: 2 }}>
                     {conn.authorityUser?.employee?.designation} · {conn.authorityUser?.role}
                   </div>
                 </div>
                 <StatusBadge status={conn.status} />
               </div>
-              <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
+              <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--slate-400)' }}>
                 {conn.startDate ? `Active since ${new Date(conn.startDate).toLocaleDateString()} · ` : ''}
                 Requested {new Date(conn.createdAt).toLocaleString()}
               </div>
@@ -381,17 +337,17 @@ export default function EmployeeJourneyPage() {
       {/* Audit Logs */}
       {activeSection === 'audit' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {auditLogs.length === 0 ? <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>No audit events</div> : null}
-          {auditLogs.map((log: any) => (
+          {auditLogs?.length === 0 ? <div style={{ color: 'var(--slate-500)', textAlign: 'center', padding: 32 }}>No audit events</div> : null}
+          {auditLogs?.map((log: any) => (
             <div key={log.id} style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(100,116,139,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Clock size={12} color="var(--slate-400)" />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-primary)' }}>{log.action.replace(/_/g, ' ')}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 1 }}>{log.entity} · {log.entityId.slice(0, 12)}...</div>
+                <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--slate-800)' }}>{log.action.replace(/_/g, ' ')}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginTop: 1 }}>{log.entity} · {log.entityId.slice(0, 12)}...</div>
               </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{new Date(log.createdAt).toLocaleString()}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--slate-400)', flexShrink: 0 }}>{new Date(log.createdAt).toLocaleString()}</div>
             </div>
           ))}
         </div>

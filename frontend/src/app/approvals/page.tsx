@@ -12,11 +12,9 @@ import { ClipboardList, CheckCircle2, XCircle, AlertTriangle, Zap } from 'lucide
 export default function ApprovalsPage() {
   const { user } = useAuth();
   const role = user?.role || '';
-  const [tab, setTab] = useState<'exit' | 'leave'>('exit');
   const [exitRequests, setExitRequests] = useState<any[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string; type: string }>({ open: false, id: '', type: '' });
+  const [rejectModal, setRejectModal] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [rejectComment, setRejectComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -31,49 +29,35 @@ export default function ApprovalsPage() {
     setLoading(true);
     try {
       let exitList: any[] = [];
-      let leaveList: any[] = [];
 
       if (role === 'MANAGER') {
-        const [eRes, lRes] = await Promise.all([
-          api.get('/exit-requests/pending').catch(() => ({ data: { data: [] } })),
-          api.get('/leave/requests/pending').catch(() => ({ data: { data: [] } })),
-        ]);
+        const eRes = await api.get('/exit-requests/pending').catch(() => ({ data: { data: [] } }));
         exitList = eRes.data?.data || [];
-        leaveList = lRes.data?.data || [];
       } else if (role === 'HR') {
-        const [eRes, lRes] = await Promise.all([
-          api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } })),
-          api.get('/leave/requests/pending-hr').catch(() => ({ data: { data: [] } })),
-        ]);
+        const eRes = await api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } }));
         exitList = eRes.data?.data || [];
-        leaveList = lRes.data?.data || [];
       } else {
         // SUPER_ADMIN or GM
-        const [e1, l1, e2, l2] = await Promise.all([
+        const [e1, e2] = await Promise.all([
           api.get('/exit-requests/pending').catch(() => ({ data: { data: [] } })),
-          api.get('/leave/requests/pending').catch(() => ({ data: { data: [] } })),
           api.get('/exit-requests/pending-hr').catch(() => ({ data: { data: [] } })),
-          api.get('/leave/requests/pending-hr').catch(() => ({ data: { data: [] } }))
         ]);
         exitList = [...(e1.data?.data || []), ...(e2.data?.data || [])];
-        leaveList = [...(l1.data?.data || []), ...(l2.data?.data || [])];
       }
 
       const dedup = (arr: any[]) => arr.filter((v, i, a) => a.findIndex(x => x.id === v.id) === i);
       setExitRequests(dedup(exitList));
-      setLeaveRequests(dedup(leaveList));
     } catch { }
     finally { setLoading(false); }
   }, [role]);
 
   useEffect(() => { load(); }, [load]);
 
-  const approve = async (id: string, type: string) => {
+  const approve = async (id: string) => {
     setActionLoading(id + '-approve');
     try {
-      const url = type === 'exit' ? `/exit-requests/${id}/review` : `/leave/requests/${id}/review`;
-      await api.patch(url, { status: 'APPROVED', comments: 'Approved' });
-      showToast('Request approved successfully ✓');
+      await api.patch(`/exit-requests/${id}/review`, { status: 'APPROVED', comments: 'Approved' });
+      showToast('Exit request approved successfully ✓');
       load();
     } catch (err: any) {
       showToast(err.response?.data?.message || 'Approval failed', false);
@@ -84,10 +68,9 @@ export default function ApprovalsPage() {
     if (!rejectComment.trim()) return;
     setSubmitting(true);
     try {
-      const url = rejectModal.type === 'exit' ? `/exit-requests/${rejectModal.id}/review` : `/leave/requests/${rejectModal.id}/review`;
-      await api.patch(url, { status: 'REJECTED', comments: rejectComment });
-      showToast('Request rejected.');
-      setRejectModal({ open: false, id: '', type: '' });
+      await api.patch(`/exit-requests/${rejectModal.id}/review`, { status: 'REJECTED', comments: rejectComment });
+      showToast('Exit request rejected.');
+      setRejectModal({ open: false, id: '' });
       setRejectComment('');
       load();
     } catch (err: any) {
@@ -96,90 +79,6 @@ export default function ApprovalsPage() {
   };
 
   if (loading) return <AppLayout><PageLoader /></AppLayout>;
-
-  const renderTable = (requests: any[], type: 'exit' | 'leave') => (
-    requests.length === 0 ? (
-      <div className="empty-state">
-        <CheckCircle2 size={36} />
-        <h4>All Caught Up!</h4>
-        <p>No pending {type === 'exit' ? 'exit permission' : 'leave'} requests.</p>
-      </div>
-    ) : (
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Dept</th>
-              {type === 'exit'
-                ? <><th>Destination</th><th>Date</th><th>Exit</th><th>Return</th><th>Flags</th></>
-                : <><th>Leave Type</th><th>From</th><th>To</th><th>Days</th><th>Submitted By</th></>
-              }
-              <th>Reason</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((r: any) => (
-              <tr key={r.id}>
-                <td>
-                  <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.employee?.firstName} {r.employee?.lastName}</div>
-                  <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)' }}>{r.employee?.employeeCode}</div>
-                </td>
-                <td style={{ fontSize: '0.8125rem' }}>{r.employee?.department?.name}</td>
-                {type === 'exit' ? (
-                  <>
-                    <td style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.destination}</td>
-                    <td style={{ fontSize: '0.8125rem' }}>{fmtDate(r.exitDate)}</td>
-                    <td className="font-mono" style={{ fontSize: '0.8125rem' }}>{r.exitTime}</td>
-                    <td className="font-mono" style={{ fontSize: '0.8125rem' }}>{r.expectedReturnTime}</td>
-                    <td>
-                      {r.isUrgent && <span className="badge badge-red" title="Urgent"><Zap size={10} /> Urgent</span>}
-                      {r.requiresHrApproval && <span className="badge badge-blue" style={{ marginLeft: 4 }}>HR Req.</span>}
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.leaveType?.name}</td>
-                    <td style={{ fontSize: '0.8125rem' }}>{fmtDate(r.fromDate)}</td>
-                    <td style={{ fontSize: '0.8125rem' }}>{fmtDate(r.toDate)}</td>
-                    <td style={{ fontWeight: 600 }}>{r.totalDays}d</td>
-                    <td>
-                      {r.submitterRole && r.submitterRole !== 'EMPLOYEE' && (
-                        <span className={`badge ${r.submitterRole === 'MANAGER' ? 'badge-amber' : 'badge-blue'}`}>
-                          {r.submitterRole}
-                        </span>
-                      )}
-                    </td>
-                  </>
-                )}
-                <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{r.reason}</td>
-                <td><span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span></td>
-                <td>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      className="btn btn-success btn-sm"
-                      onClick={() => approve(r.id, type)}
-                      disabled={actionLoading === r.id + '-approve'}
-                    >
-                      {actionLoading === r.id + '-approve' ? <Spinner size="sm" /> : <CheckCircle2 size={13} />} Approve
-                    </button>
-                    <button
-                      className="btn btn-danger-outline btn-sm"
-                      onClick={() => { setRejectModal({ open: true, id: r.id, type }); setRejectComment(''); }}
-                    >
-                      <XCircle size={13} /> Reject
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  );
 
   return (
     <AppLayout>
@@ -195,37 +94,87 @@ export default function ApprovalsPage() {
         <div className="page-header">
           <div className="page-header-row">
             <div>
-              <h1><ClipboardList size={20} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--blue-700)' }} />Approvals</h1>
-              <p>Review and approve/reject team requests — only your relevant pending items shown</p>
+              <h1><ClipboardList size={20} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--blue-700)' }} />Pending Approvals</h1>
+              <p>Review and approve or reject exit permission requests awaiting your clearance</p>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--blue-100)' }}>
-          {(['exit', 'leave'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: '10px 20px', fontWeight: 600, fontSize: '0.8125rem', border: 'none', background: 'none', cursor: 'pointer',
-              borderBottom: tab === t ? '2px solid var(--blue-700)' : '2px solid transparent',
-              color: tab === t ? 'var(--blue-700)' : 'var(--slate-500)', marginBottom: -2
-            }}>
-              {t === 'exit' ? `Exit Permissions (${exitRequests.length})` : `Leave Requests (${leaveRequests.length})`}
-            </button>
-          ))}
-        </div>
-
         <div className="card">
-          {tab === 'exit' ? renderTable(exitRequests, 'exit') : renderTable(leaveRequests, 'leave')}
+          {exitRequests.length === 0 ? (
+            <div className="empty-state">
+              <CheckCircle2 size={36} />
+              <h4>All Caught Up!</h4>
+              <p>No pending exit permission requests waiting for your approval.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Dept</th>
+                    <th>Destination</th>
+                    <th>Date</th>
+                    <th>Exit</th>
+                    <th>Return</th>
+                    <th>Flags</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exitRequests.map((r: any) => (
+                    <tr key={r.id}>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.employee?.firstName} {r.employee?.lastName}</div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)' }}>{r.employee?.employeeCode}</div>
+                      </td>
+                      <td style={{ fontSize: '0.8125rem' }}>{r.employee?.department?.name}</td>
+                      <td style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{r.destination}</td>
+                      <td style={{ fontSize: '0.8125rem' }}>{fmtDate(r.exitDate)}</td>
+                      <td className="font-mono" style={{ fontSize: '0.8125rem' }}>{r.exitTime}</td>
+                      <td className="font-mono" style={{ fontSize: '0.8125rem' }}>{r.expectedReturnTime}</td>
+                      <td>
+                        {r.isUrgent && <span className="badge badge-red" title="Urgent"><Zap size={10} /> Urgent</span>}
+                        {r.requiresHrApproval && <span className="badge badge-blue" style={{ marginLeft: 4 }}>HR Clearance</span>}
+                      </td>
+                      <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>{r.reason}</td>
+                      <td><span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            className="btn btn-success btn-sm"
+                            onClick={() => approve(r.id)}
+                            disabled={actionLoading === r.id + '-approve'}
+                          >
+                            {actionLoading === r.id + '-approve' ? <Spinner size="sm" /> : <CheckCircle2 size={13} />} Approve
+                          </button>
+                          <button
+                            className="btn btn-danger-outline btn-sm"
+                            onClick={() => { setRejectModal({ open: true, id: r.id }); setRejectComment(''); }}
+                          >
+                            <XCircle size={13} /> Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Reject Modal */}
       <Modal
         open={rejectModal.open}
-        onClose={() => setRejectModal({ open: false, id: '', type: '' })}
-        title="Reject Request"
+        onClose={() => setRejectModal({ open: false, id: '' })}
+        title="Reject Exit Request"
         footer={<>
-          <button className="btn btn-ghost" onClick={() => setRejectModal({ open: false, id: '', type: '' })}>Cancel</button>
+          <button className="btn btn-ghost" onClick={() => setRejectModal({ open: false, id: '' })}>Cancel</button>
           <button className="btn btn-danger" onClick={reject} disabled={!rejectComment.trim() || submitting}>
             {submitting && <Spinner white size="sm" />} Confirm Reject
           </button>
@@ -241,7 +190,7 @@ export default function ApprovalsPage() {
             onChange={e => setRejectComment(e.target.value)}
             autoFocus
           />
-          <span className="form-hint">This reason will be sent to the employee as a notification.</span>
+          <span className="form-hint">This reason will be recorded and visible to the employee.</span>
         </div>
       </Modal>
     </AppLayout>

@@ -733,8 +733,10 @@ textarea.form-control {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  z-index: 100;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -751,22 +753,25 @@ textarea.form-control {
   width: 100%;
   max-width: 520px;
   max-height: 90vh;
-  overflow-y: auto;
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-lg);
   animation: slideUp 200ms ease;
+  overflow: hidden;
+  position: relative;
 }
 
 .modal-header {
-  padding: 18px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--slate-100);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   background: white;
-  z-index: 1;
+  z-index: 2;
 }
 
 .modal-title {
@@ -787,11 +792,17 @@ textarea.form-control {
   justify-content: center;
   color: var(--slate-500);
   transition: all var(--transition);
+  flex-shrink: 0;
 }
 
 .modal-close:hover { background: var(--slate-200); color: var(--slate-700); }
 
-.modal-body { padding: 20px; }
+.modal-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+}
 
 .modal-footer {
   padding: 14px 20px;
@@ -799,6 +810,9 @@ textarea.form-control {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  flex-shrink: 0;
+  background: white;
+  z-index: 2;
 }
 
 /* =============================================
@@ -1256,32 +1270,49 @@ textarea.form-control {
   }
 
   .modal-backdrop {
-    padding: 8px !important;
-    align-items: flex-end !important;
+    padding: 12px 10px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 100000 !important;
   }
 
   .modal {
     max-width: 100% !important;
     width: 100% !important;
-    max-height: 85vh !important;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    max-height: 86vh !important;
+    max-height: 86dvh !important;
+    border-radius: var(--radius-lg) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
   }
 
   .modal-header {
-    padding: 12px 16px !important;
+    padding: 14px 16px !important;
+    flex-shrink: 0 !important;
   }
 
   .modal-body {
     padding: 14px 16px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex: 1 1 auto !important;
   }
 
   .modal-footer {
-    padding: 10px 16px !important;
-    flex-wrap: wrap !important;
+    padding: 12px 16px !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    border-top: 1px solid var(--slate-100) !important;
+    background: white !important;
   }
 
   .modal-footer .btn {
     flex: 1 1 auto !important;
+    padding: 10px 14px !important;
+    font-size: 0.875rem !important;
   }
 
   .filter-bar-responsive {

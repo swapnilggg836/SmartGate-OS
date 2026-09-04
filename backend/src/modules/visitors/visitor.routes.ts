@@ -103,6 +103,10 @@ async function issueVisitorPass(visitId: string): Promise<any> {
     visitId: visit.visitId, visitorName: visit.visitor.fullName,
     purpose: visit.purpose, expectedEntryTime: visit.expectedEntryTime, passNumber,
   });
+  emitToRole(UserRole.SUPER_ADMIN, 'visitor:pass_issued', {
+    visitId: visit.visitId, visitorName: visit.visitor.fullName,
+    passNumber, hostName
+  });
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   if (visit.visitor.email) {
@@ -124,6 +128,7 @@ const visitorBaseSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   organization: z.string().optional(),
   idType: z.enum(['AADHAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'OTHER']).optional(),
+  photoUrl: z.string().optional(),
 });
 
 const visitDetailsSchema = z.object({
@@ -198,6 +203,11 @@ router.get('/pass/:token', async (req: Request, res: Response) => {
         hostDesignation: hostEmp?.designation || '',
         departmentName: pass.visit.department?.name || hostEmp?.department?.name || '',
         numberOfVisitors: pass.visit.numberOfVisitors,
+        photoUrl: pass.visit.photoUrl || pass.visit.visitor.photoUrl || null,
+        organization: pass.visit.visitor.organization || null,
+        vehicleNumber: pass.visit.vehicleNumber || null,
+        idType: pass.visit.visitor.idType || null,
+        mobile: pass.visit.visitor.mobile,
       },
     });
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch visitor pass.' }); }
@@ -250,7 +260,7 @@ router.get('/public-hosts', async (req: Request, res: Response) => {
 // ?? Public: Visitor self-check-in at company gate (no auth) ???????????????????
 router.post('/self-register', async (req: Request, res: Response) => {
   try {
-    const { fullName, mobile, email, organization, idType, hostUserId, purpose, numberOfVisitors, vehicleNumber } = req.body;
+    const { fullName, mobile, email, organization, idType, hostUserId, purpose, numberOfVisitors, vehicleNumber, photoUrl } = req.body;
 
     if (!fullName || !mobile || !hostUserId || !purpose) {
       return res.status(400).json({ success: false, message: 'Name, Mobile, Host and Purpose are required.' });
@@ -271,12 +281,18 @@ router.post('/self-register', async (req: Request, res: Response) => {
           email: email || null,
           organization: organization || null,
           idType: idType || null,
+          photoUrl: photoUrl || null,
         }
       });
     } else {
       visitor = await prisma.visitor.update({
         where: { id: visitor.id },
-        data: { fullName, email: email || null, organization: organization || null }
+        data: {
+          fullName,
+          email: email || null,
+          organization: organization || null,
+          ...(photoUrl ? { photoUrl } : {})
+        }
       });
     }
 
@@ -299,6 +315,7 @@ router.post('/self-register', async (req: Request, res: Response) => {
         expectedExitTime: `${exitHh}:${mm}`,
         numberOfVisitors: Number(numberOfVisitors) || 1,
         vehicleNumber: vehicleNumber || null,
+        photoUrl: photoUrl || null,
         visitType: 'WALK_IN',
         status: 'PENDING_HOST',
         requiresHostApproval: true,
@@ -327,6 +344,7 @@ router.post('/self-register', async (req: Request, res: Response) => {
       mobile,
       organization: organization || 'Individual',
       purpose,
+      photoUrl: photoUrl || null,
       time: `${hh}:${mm}`,
       hostName,
     });
@@ -335,6 +353,7 @@ router.post('/self-register', async (req: Request, res: Response) => {
       visitId: visit.visitId,
       id: visit.id,
       visitorName: fullName,
+      photoUrl: photoUrl || null,
       hostName,
       purpose,
     });
@@ -346,6 +365,7 @@ router.post('/self-register', async (req: Request, res: Response) => {
         id: visit.id,
         status: 'PENDING_HOST',
         visitorName: fullName,
+        photoUrl: photoUrl || null,
         hostName,
         hostDesignation: hostUser.employee?.designation || 'Staff',
         hostDepartment: hostUser.employee?.department?.name || 'General',
@@ -358,12 +378,23 @@ router.post('/self-register', async (req: Request, res: Response) => {
   }
 });
 
-// ?? Public: Poll visitor visit status from mobile (no auth) ???????????????????
+// ?? Public: Poll visitor visit status from mobile or mobile number search (no auth) ?????
 router.get('/public-status/:visitId', async (req: Request, res: Response) => {
   try {
-    const { visitId } = req.params;
+    const rawId = decodeURIComponent(req.params.visitId).trim();
+    const cleanPhone = rawId.replace(/[^0-9]/g, '');
+
     const visit = await prisma.visitorVisit.findFirst({
-      where: { OR: [{ visitId }, { id: visitId }] },
+      where: {
+        OR: [
+          { visitId: rawId },
+          { id: rawId },
+          ...(cleanPhone.length >= 7 ? [{ visitor: { mobile: { contains: cleanPhone } } }] : []),
+          { visitorPass: { passNumber: rawId } },
+          { visitorPass: { qrToken: rawId } }
+        ]
+      },
+      orderBy: { createdAt: 'desc' },
       include: {
         visitor: true,
         visitorPass: true,
@@ -371,7 +402,7 @@ router.get('/public-status/:visitId', async (req: Request, res: Response) => {
       }
     });
 
-    if (!visit) return res.status(404).json({ success: false, message: 'Visit record not found.' });
+    if (!visit) return res.status(404).json({ success: false, message: 'No visit record found for this identifier or mobile number.' });
 
     const hostEmp = visit.hostUser?.employee;
     const hostName = hostEmp ? `${hostEmp.firstName} ${hostEmp.lastName}` : visit.hostUser?.email || 'Host';
@@ -405,6 +436,10 @@ router.get('/public-status/:visitId', async (req: Request, res: Response) => {
         id: visit.id,
         status: visit.status,
         visitorName: visit.visitor.fullName,
+        photoUrl: visit.photoUrl || visit.visitor.photoUrl || null,
+        organization: visit.visitor.organization || null,
+        vehicleNumber: visit.vehicleNumber || null,
+        idType: visit.visitor.idType || null,
         hostName,
         hostDesignation: hostEmp?.designation || 'Staff',
         hostDepartment: hostEmp?.department?.name || 'General',
@@ -510,16 +545,16 @@ router.post('/invite', authenticate, validateBody(inviteSchema), async (req: Aut
 router.post('/walk-in', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN), validateBody(walkInSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    const { fullName, gender, mobile, email, organization, idType, hostUserId, departmentId, purpose, description, visitDate, expectedEntryTime, expectedExitTime, numberOfVisitors, vehicleNumber, vehicleType, additionalVisitors } = req.body;
+    const { fullName, gender, mobile, email, organization, idType, hostUserId, departmentId, purpose, description, visitDate, expectedEntryTime, expectedExitTime, numberOfVisitors, vehicleNumber, vehicleType, photoUrl, additionalVisitors } = req.body;
 
     const hostUser = await prisma.user.findUnique({ where: { id: hostUserId, isActive: true }, select: { id: true, email: true, employee: { select: { firstName: true, lastName: true } } } });
     if (!hostUser) return res.status(404).json({ success: false, message: 'Host not found or inactive.' });
 
     let visitor = await prisma.visitor.findFirst({ where: { mobile } });
     if (!visitor) {
-      visitor = await prisma.visitor.create({ data: { fullName, gender: gender || null, mobile, email: email || null, organization: organization || null, idType: idType || null } });
+      visitor = await prisma.visitor.create({ data: { fullName, gender: gender || null, mobile, email: email || null, organization: organization || null, idType: idType || null, photoUrl: photoUrl || null } });
     } else {
-      visitor = await prisma.visitor.update({ where: { id: visitor.id }, data: { fullName, email: email || null, organization: organization || null } });
+      visitor = await prisma.visitor.update({ where: { id: visitor.id }, data: { fullName, email: email || null, organization: organization || null, ...(photoUrl ? { photoUrl } : {}) } });
     }
 
     const visitId = await generateVisitId();
@@ -533,6 +568,7 @@ router.post('/walk-in', authenticate, requireRoles(UserRole.SECURITY_GUARD, User
         purpose, description: description || null, visitDate: today,
         expectedEntryTime: expectedEntryTime || nowTime, expectedExitTime,
         numberOfVisitors: numberOfVisitors || 1, vehicleNumber: vehicleNumber || null, vehicleType: vehicleType || null,
+        photoUrl: photoUrl || null,
         requiresHostApproval: true, visitType: 'WALK_IN', status: 'PENDING_HOST', createdByUserId: userId,
       },
       include: VISIT_INCLUDE,
@@ -569,7 +605,7 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
   try {
     const role = req.user!.role;
     const userId = req.user!.userId;
-    const { status, date } = req.query;
+    const { status, date, startDate, endDate, departmentId } = req.query;
 
     const where: any = {};
 
@@ -595,9 +631,24 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
       ];
     }
 
-    if (status) where.status = String(status);
-    if (date) {
+    if (status && status !== 'ALL') where.status = String(status);
+    if (departmentId && departmentId !== 'ALL') where.departmentId = String(departmentId);
+
+    if (startDate || endDate) {
+      where.visitDate = {};
+      if (startDate) {
+        const s = new Date(String(startDate));
+        s.setHours(0, 0, 0, 0);
+        where.visitDate.gte = s;
+      }
+      if (endDate) {
+        const e = new Date(String(endDate));
+        e.setHours(23, 59, 59, 999);
+        where.visitDate.lte = e;
+      }
+    } else if (date) {
       const d = new Date(String(date));
+      d.setHours(0, 0, 0, 0);
       const d2 = new Date(d);
       d2.setDate(d.getDate() + 1);
       where.visitDate = { gte: d, lt: d2 };
@@ -663,6 +714,49 @@ router.get('/incoming', authenticate, async (req: AuthenticatedRequest, res: Res
     const visits = await prisma.visitorVisit.findMany({ where, include: VISIT_INCLUDE, orderBy: { createdAt: 'desc' } });
     return res.json({ success: true, data: visits });
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch incoming visits.' }); }
+});
+
+// GET /api/visitors/stats
+router.get('/stats', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, UserRole.GM, UserRole.SECURITY_GUARD), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const [total, todayCount, inside, waiting, completed, rejected, cancelled, expired, overdue] = await Promise.all([
+      prisma.visitorVisit.count(),
+      prisma.visitorVisit.count({ where: { visitDate: { gte: today, lt: tomorrow } } }),
+      prisma.visitorVisit.count({ where: { status: 'CHECKED_IN' } }),
+      prisma.visitorVisit.count({ where: { status: 'WAITING' } }),
+      prisma.visitorVisit.count({ where: { status: { in: ['COMPLETED', 'CHECKED_OUT'] } } }),
+      prisma.visitorVisit.count({ where: { status: 'REJECTED' } }),
+      prisma.visitorVisit.count({ where: { status: 'CANCELLED' } }),
+      prisma.visitorVisit.count({ where: { status: 'EXPIRED' } }),
+      prisma.visitorVisit.count({ where: { status: 'OVERDUE' } }),
+    ]);
+    return res.json({ success: true, data: { total, today: todayCount, inside, waiting, completed, rejected, cancelled, expired, overdue } });
+  } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch stats.' }); }
+});
+
+// GET /api/visitors/emergency — who is inside right now
+router.get('/emergency', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, UserRole.GM, UserRole.SECURITY_GUARD), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const visits = await prisma.visitorVisit.findMany({
+      where: { status: { in: ['CHECKED_IN', 'OVERDUE'] } },
+      include: { visitor: true, hostUser: { select: { email: true, employee: { select: { firstName: true, lastName: true } } } }, department: { select: { name: true } }, checkIns: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      orderBy: { updatedAt: 'asc' },
+    });
+    const data = visits.map((v) => ({
+      visitId: v.visitId,
+      visitorName: v.visitor.fullName,
+      mobile: v.visitor.mobile,
+      hostName: (v.hostUser as any)?.employee ? `${(v.hostUser as any).employee.firstName} ${(v.hostUser as any).employee.lastName}` : (v.hostUser as any)?.email || '',
+      department: v.department?.name || '',
+      entryTime: (v.checkIns as any)[0]?.actualEntryTime || null,
+      expectedExitTime: v.expectedExitTime,
+      status: v.status,
+      numberOfVisitors: v.numberOfVisitors,
+    }));
+    return res.json({ success: true, data, total: data.length, generatedAt: new Date().toISOString() });
+  } catch (err) { return res.status(500).json({ success: false, message: 'Failed to generate emergency list.' }); }
 });
 
 // ?? GET /api/visitors/:visitId ????????????????????????????????????????????????
@@ -747,7 +841,12 @@ router.patch('/:visitId/cancel', authenticate, async (req: AuthenticatedRequest,
 // POST /api/visitors/security/verify
 router.post('/security/verify', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN), validateBody(verifySchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { identifier } = req.body;
+    let { identifier } = req.body;
+    identifier = String(identifier || '').trim();
+    if (identifier.includes('/visitor-pass/')) {
+      identifier = identifier.split('/visitor-pass/').pop()?.split('?')[0]?.trim() || identifier;
+    }
+
     // Try by qrToken or passNumber
     const pass = await prisma.visitorPass.findFirst({
       where: { OR: [{ qrToken: identifier }, { passNumber: identifier }] },
@@ -813,6 +912,8 @@ router.post('/security/check-in/:visitId', authenticate, requireRoles(UserRole.S
     });
     await prisma.notification.create({ data: { userId: visit.hostUserId, title: 'Visitor Checked In', message: `${visit.visitor.fullName} has arrived and checked in at ${now.toLocaleTimeString()}.`, type: 'INFO', metadata: JSON.stringify({ visitId: visit.visitId }) } });
     emitToUser(visit.hostUserId, 'visitor:checked_in', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
+    emitToRole(UserRole.SECURITY_GUARD, 'visitor:checked_in', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
+    emitToRole(UserRole.SUPER_ADMIN, 'visitor:checked_in', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
     return res.json({ success: true, message: 'Visitor checked in.', visitId: visit.visitId });
   } catch (err) { console.error('Check-in error:', err); return res.status(500).json({ success: false, message: 'Check-in failed.' }); }
 });
@@ -834,6 +935,8 @@ router.post('/security/check-out/:visitId', authenticate, requireRoles(UserRole.
     });
     await prisma.notification.create({ data: { userId: visit.hostUserId, title: 'Visitor Checked Out', message: `${visit.visitor.fullName} has left at ${now.toLocaleTimeString()}.`, type: 'INFO', metadata: JSON.stringify({ visitId: visit.visitId }) } });
     emitToUser(visit.hostUserId, 'visitor:checked_out', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
+    emitToRole(UserRole.SECURITY_GUARD, 'visitor:checked_out', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
+    emitToRole(UserRole.SUPER_ADMIN, 'visitor:checked_out', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
     return res.json({ success: true, message: 'Visitor checked out.', visitId: visit.visitId });
   } catch (err) { return res.status(500).json({ success: false, message: 'Check-out failed.' }); }
 });
@@ -868,49 +971,6 @@ router.get('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, Us
     const visits = await prisma.visitorVisit.findMany({ where, include: VISIT_INCLUDE, orderBy: { createdAt: 'desc' }, take: 200 });
     return res.json({ success: true, data: visits, total: visits.length });
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch visitor records.' }); }
-});
-
-// GET /api/visitors/stats
-router.get('/stats', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, UserRole.GM, UserRole.SECURITY_GUARD), async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-    const [total, todayCount, inside, waiting, completed, rejected, cancelled, expired, overdue] = await Promise.all([
-      prisma.visitorVisit.count(),
-      prisma.visitorVisit.count({ where: { visitDate: { gte: today, lt: tomorrow } } }),
-      prisma.visitorVisit.count({ where: { status: 'CHECKED_IN' } }),
-      prisma.visitorVisit.count({ where: { status: 'WAITING' } }),
-      prisma.visitorVisit.count({ where: { status: { in: ['COMPLETED', 'CHECKED_OUT'] } } }),
-      prisma.visitorVisit.count({ where: { status: 'REJECTED' } }),
-      prisma.visitorVisit.count({ where: { status: 'CANCELLED' } }),
-      prisma.visitorVisit.count({ where: { status: 'EXPIRED' } }),
-      prisma.visitorVisit.count({ where: { status: 'OVERDUE' } }),
-    ]);
-    return res.json({ success: true, data: { total, today: todayCount, inside, waiting, completed, rejected, cancelled, expired, overdue } });
-  } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch stats.' }); }
-});
-
-// GET /api/visitors/emergency ? who is inside right now
-router.get('/emergency', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, UserRole.GM, UserRole.SECURITY_GUARD), async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const visits = await prisma.visitorVisit.findMany({
-      where: { status: { in: ['CHECKED_IN', 'OVERDUE'] } },
-      include: { visitor: true, hostUser: { select: { email: true, employee: { select: { firstName: true, lastName: true } } } }, department: { select: { name: true } }, checkIns: { orderBy: { createdAt: 'desc' }, take: 1 } },
-      orderBy: { updatedAt: 'asc' },
-    });
-    const data = visits.map((v) => ({
-      visitId: v.visitId,
-      visitorName: v.visitor.fullName,
-      mobile: v.visitor.mobile,
-      hostName: (v.hostUser as any)?.employee ? `${(v.hostUser as any).employee.firstName} ${(v.hostUser as any).employee.lastName}` : (v.hostUser as any)?.email || '',
-      department: v.department?.name || '',
-      entryTime: (v.checkIns as any)[0]?.actualEntryTime || null,
-      expectedExitTime: v.expectedExitTime,
-      status: v.status,
-      numberOfVisitors: v.numberOfVisitors,
-    }));
-    return res.json({ success: true, data, total: data.length, generatedAt: new Date().toISOString() });
-  } catch (err) { return res.status(500).json({ success: false, message: 'Failed to generate emergency list.' }); }
 });
 
 export default router;

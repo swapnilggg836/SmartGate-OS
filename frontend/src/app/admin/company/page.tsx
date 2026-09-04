@@ -17,7 +17,6 @@ interface DeptRow {
   total: number;
   present: number;
   absent: number;
-  onLeave: number;
   outside: number;
   late: number;
 }
@@ -30,10 +29,8 @@ interface Overview {
   totalHR: number;
   totalSecurity: number;
   presentToday: number;
-  onLeaveToday: number;
   absentToday: number;
   currentlyOutside: number;
-  pendingLeave: number;
   pendingExit: number;
   lateReturns: number;
   criticalCases: number;
@@ -100,7 +97,7 @@ export default function CompanyPage() {
               <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Building2 size={22} style={{ color: 'var(--blue-700)' }} /> Company Overview
               </h1>
-              <p>Real-time organization metrics, attendance, department breakdown & gate pass activity (Updated: {lastRefresh.toLocaleTimeString()})</p>
+              <p>Real-time organization metrics, department breakdown & gate pass activity (Updated: {lastRefresh.toLocaleTimeString()})</p>
             </div>
             <button className="btn btn-outline btn-sm" onClick={fetchData} disabled={loading}>
               <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Refresh
@@ -113,11 +110,9 @@ export default function CompanyPage() {
             {/* KPI Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
               <KpiCard icon={<Users />} label="Total Employees" value={overview.totalEmployees} color="var(--blue-600)" />
-              <KpiCard icon={<UserCheck />} label="Present Today" value={overview.presentToday} color="var(--green-600)" sub={`${Math.round((overview.presentToday / Math.max(overview.totalEmployees, 1)) * 100)}% attendance`} />
-              <KpiCard icon={<UserX />} label="Absent Today" value={overview.absentToday} color="var(--red-500)" />
-              <KpiCard icon={<FileText />} label="On Leave Today" value={overview.onLeaveToday} color="#8b5cf6" />
-              <KpiCard icon={<TrendingUp />} label="Currently Outside" value={overview.currentlyOutside} color="var(--amber-500)" />
-              <KpiCard icon={<Clock />} label="Pending Approvals" value={overview.pendingLeave + overview.pendingExit} color="var(--amber-600)" sub={`${overview.pendingLeave} leave · ${overview.pendingExit} exit`} />
+              <KpiCard icon={<UserCheck />} label="Present On-Site" value={overview.presentToday} color="var(--green-600)" />
+              <KpiCard icon={<TrendingUp />} label="Currently Outside" value={overview.currentlyOutside} color="var(--amber-500)" sub="On gate pass permission" />
+              <KpiCard icon={<Clock />} label="Pending Exit Requests" value={overview.pendingExit} color="var(--amber-600)" sub={`${overview.pendingExit} pending`} />
               <KpiCard icon={<AlertCircle />} label="Late Returns" value={overview.lateReturns} color="var(--red-600)" />
               <KpiCard icon={<XCircle />} label="Critical Cases" value={overview.criticalCases} color="#dc2626" />
               <KpiCard icon={<Briefcase />} label="Total Managers" value={overview.totalManagers} color="var(--blue-700)" />
@@ -133,7 +128,7 @@ export default function CompanyPage() {
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--red-700)' }}>Action Required</div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--slate-600)', marginTop: 2 }}>
-                    {overview.criticalCases > 0 && `${overview.criticalCases} critical pending request(s) require immediate escalation. `}
+                    {overview.criticalCases > 0 && `${overview.criticalCases} critical pending exit request(s) require immediate escalation. `}
                     {overview.lateReturns > 0 && `${overview.lateReturns} employee(s) are overdue on their return to premises.`}
                   </div>
                 </div>
@@ -143,7 +138,7 @@ export default function CompanyPage() {
             {/* Department Table */}
             <div className="card">
               <div className="card-header">
-                <h3 className="card-title"><Building2 size={16} /> Department Attendance & Gate Breakdown</h3>
+                <h3 className="card-title"><Building2 size={16} /> Department Breakdown & Gate Activity</h3>
               </div>
               <div className="table-wrap">
                 <table className="table">
@@ -152,9 +147,7 @@ export default function CompanyPage() {
                       <th>Department</th>
                       <th style={{ textAlign: 'center' }}>Total Staff</th>
                       <th style={{ textAlign: 'center' }}>Present</th>
-                      <th style={{ textAlign: 'center' }}>Absent</th>
-                      <th style={{ textAlign: 'center' }}>On Leave</th>
-                      <th style={{ textAlign: 'center' }}>Outside</th>
+                      <th style={{ textAlign: 'center' }}>Currently Outside</th>
                       <th style={{ textAlign: 'center' }}>Late Returns</th>
                     </tr>
                   </thead>
@@ -167,8 +160,6 @@ export default function CompanyPage() {
                         </td>
                         <td style={{ textAlign: 'center', fontWeight: 700 }}>{dept.total}</td>
                         <td style={{ textAlign: 'center', color: 'var(--green-600)', fontWeight: 600 }}>{dept.present}</td>
-                        <td style={{ textAlign: 'center', color: dept.absent > 0 ? 'var(--red-600)' : 'var(--slate-400)', fontWeight: dept.absent > 0 ? 600 : 400 }}>{dept.absent}</td>
-                        <td style={{ textAlign: 'center', color: '#8b5cf6', fontWeight: dept.onLeave > 0 ? 600 : 400 }}>{dept.onLeave}</td>
                         <td style={{ textAlign: 'center', color: 'var(--amber-600)', fontWeight: dept.outside > 0 ? 600 : 400 }}>{dept.outside}</td>
                         <td style={{ textAlign: 'center' }}>
                           {dept.late > 0 ? (
@@ -185,8 +176,6 @@ export default function CompanyPage() {
                       <td style={{ color: 'var(--blue-900)' }}>TOTALS</td>
                       <td style={{ textAlign: 'center' }}>{deptSummary.reduce((s, d) => s + d.total, 0)}</td>
                       <td style={{ textAlign: 'center', color: 'var(--green-700)' }}>{deptSummary.reduce((s, d) => s + d.present, 0)}</td>
-                      <td style={{ textAlign: 'center', color: 'var(--red-700)' }}>{deptSummary.reduce((s, d) => s + d.absent, 0)}</td>
-                      <td style={{ textAlign: 'center', color: '#7c3aed' }}>{deptSummary.reduce((s, d) => s + d.onLeave, 0)}</td>
                       <td style={{ textAlign: 'center', color: 'var(--amber-700)' }}>{deptSummary.reduce((s, d) => s + d.outside, 0)}</td>
                       <td style={{ textAlign: 'center', color: 'var(--red-700)' }}>{deptSummary.reduce((s, d) => s + d.late, 0)}</td>
                     </tr>

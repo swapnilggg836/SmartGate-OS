@@ -8,7 +8,8 @@ import { fmtDate, statusBadgeClass, statusLabel } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
-import { UserPlus, Users, CheckCircle2, XCircle, AlertTriangle, Search, QrCode, MessageCircle } from 'lucide-react';
+import { UserPlus, Users, CheckCircle2, XCircle, AlertTriangle, Search, QrCode, MessageCircle, Printer } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 function HostSearch({ value, onChange }: { value: any; onChange: (h: any) => void }) {
   const [q, setQ] = useState('');
@@ -161,6 +162,32 @@ export default function VisitorsPage() {
 
   if (loading) return <AppLayout><PageLoader /></AppLayout>;
 
+  const downloadVisitorsCsv = () => {
+    if (activeList.length === 0) return;
+    const headers = ['Visit ID', 'Visitor Name', 'Mobile', 'Organization', 'Host', 'Purpose', 'Date', 'Expected Time', 'Status', 'Pass Number'];
+    const rows = activeList.map(v => [
+      v.visitId,
+      `"${v.visitor?.fullName || ''}"`,
+      `="${v.visitor?.mobile || ''}"`,
+      `"${v.visitor?.organization || ''}"`,
+      `"${v.hostUser?.employee ? `${v.hostUser.employee.firstName} ${v.hostUser.employee.lastName}` : (v.hostUser?.email || '')}"`,
+      `"${(v.purpose || '').replace(/"/g, '""')}"`,
+      fmtDate(v.visitDate),
+      `"${v.expectedEntryTime || ''} - ${v.expectedExitTime || ''}"`,
+      v.status,
+      v.visitorPass?.passNumber || ''
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `visitors-${tab}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <AppLayout>
       <div className="space-y-4">
@@ -168,6 +195,9 @@ export default function VisitorsPage() {
           <div className="page-header-row">
             <div><h1>Visitors</h1><p style={{ marginTop: 2 }}>Manage visitor invitations and requests</p></div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-outline btn-sm" onClick={downloadVisitorsCsv} disabled={activeList.length === 0}>
+                <Printer size={14} /> Export CSV
+              </button>
               <button className="btn btn-outline btn-sm" onClick={() => setShowQrPoster(true)}>
                 <QrCode size={14} /> Gate QR Poster
               </button>
@@ -309,10 +339,13 @@ function GateQrPosterModal({ open, onClose }: { open: boolean; onClose: () => vo
             boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
             marginBottom: 20
           }}>
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(registerUrl || 'http://localhost:3000/visitor-register')}`}
-              alt="Gate Registration QR"
-              style={{ width: 200, height: 200, display: 'block' }}
+            <QRCodeSVG
+              value={registerUrl || 'http://localhost:3000/visitor-register'}
+              size={200}
+              level="H"
+              includeMargin={true}
+              bgColor="#ffffff"
+              fgColor="#0f172a"
             />
           </div>
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth, RegisterData } from '@/context/AuthContext';
 import { api } from '@/lib/api';
-import { Shield, User, Mail, Lock, Phone, Building, Briefcase, AlertCircle, ArrowRight } from 'lucide-react';
+import { Shield, User, Mail, Lock, Phone, Building, Briefcase, AlertCircle, ArrowRight, QrCode } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 
 type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE' | 'SECURITY_GUARD';
@@ -79,7 +79,7 @@ export default function RegisterPage() {
     }}>
       <div style={{ width: '100%', maxWidth: 560 }}>
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{
             width: 48, height: 48, borderRadius: 12, background: 'var(--blue-700)',
             color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -91,8 +91,61 @@ export default function RegisterPage() {
             Create Employee Account
           </h1>
           <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem' }}>
-            Register a new account — data saved to MySQL database
+            Internal staff and faculty registration
           </p>
+        </div>
+
+        {/* Visitor Fast-Track Entry Banner (No login required) */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
+          borderRadius: 14,
+          padding: '16px 18px',
+          marginBottom: 20,
+          color: 'white',
+          boxShadow: '0 8px 24px rgba(37, 99, 235, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          border: '1px solid rgba(255,255,255,0.2)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 12,
+              background: 'rgba(255,255,255,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <QrCode size={22} color="white" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+                Are you a Visitor?
+              </div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: 2 }}>
+                Visitors do NOT need an employee account
+              </div>
+            </div>
+          </div>
+          <Link
+            href="/visitor-register"
+            style={{
+              background: 'white',
+              color: '#1d4ed8',
+              padding: '9px 14px',
+              borderRadius: 10,
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+            }}
+          >
+            Visitor Entry <ArrowRight size={14} />
+          </Link>
         </div>
 
         <div className="card">
@@ -221,11 +274,17 @@ export default function RegisterPage() {
               </button>
             </form>
           </div>
-          <div className="card-footer" style={{ textAlign: 'center' }}>
+          <div className="card-footer" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ color: 'var(--slate-500)', fontSize: '0.8125rem' }}>
               Already have an account?{' '}
               <Link href="/login" style={{ color: 'var(--blue-700)', fontWeight: 600, textDecoration: 'none' }}>
                 Sign In
+              </Link>
+            </span>
+            <span style={{ color: 'var(--slate-400)', fontSize: '0.75rem' }}>
+              Visiting campus today?{' '}
+              <Link href="/visitor-register" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
+                Fill Visitor Form (No Account Required) →
               </Link>
             </span>
           </div>

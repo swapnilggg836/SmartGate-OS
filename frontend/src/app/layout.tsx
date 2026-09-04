@@ -4,8 +4,8 @@ import { AuthProvider } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 
 export const metadata: Metadata = {
-  title: 'SmartGate OS — Leave & Gate Pass System',
-  description: 'Smart Employee Leave, Exit Permission & Digital Gate Pass Management System'
+  title: 'SmartGate OS — Exit Permission & Digital Gate Pass System',
+  description: 'Smart Employee Exit Permission, Digital Gate Pass & Visitor Management System'
 };
 
 export const viewport: Viewport = {

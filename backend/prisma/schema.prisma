@@ -395,6 +395,7 @@ model Visitor {
   organization String?  @db.VarChar(200)
   idType       String?  @db.VarChar(50)   // AADHAR, PAN, PASSPORT, DRIVING_LICENSE, OTHER
   idVerified   Boolean  @default(false)
+  photoUrl     String?  @db.LongText
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -420,6 +421,7 @@ model VisitorVisit {
   numberOfVisitors     Int      @default(1)
   vehicleNumber        String?  @db.VarChar(50)
   vehicleType          String?  @db.VarChar(50)
+  photoUrl             String?  @db.LongText
   requiresParkingSlot  Boolean  @default(false)
   requiresHostApproval Boolean  @default(true)
   requiresHrApproval   Boolean  @default(false)
@@ -541,4 +543,16 @@ model VisitorAuditLog {
 
   @@index([visitId])
   @@index([action])
+}
+
+model PasswordResetOtp {
+  id        String   @id @default(cuid())
+  email     String   @db.VarChar(191)
+  otp       String   @db.VarChar(10)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([otp])
 }
