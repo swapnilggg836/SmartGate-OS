@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { authenticate, AuthenticatedRequest } from '../../middleware/auth';
 import { requireRoles } from '../../middleware/rbac';
 import { sendEmailNotification } from '../../lib/email';
+import { emitToUser } from '../../lib/socket';
 
 const router = Router();
 
@@ -20,42 +21,110 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
     }
 
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedSubject = subject.trim();
+    const trimmedName = name.trim();
+    const trimmedPhone = phone?.trim() || null;
+    const trimmedMessage = message.trim();
+
+    // 1. Save submission to database
     const submission = await prisma.contactSubmission.create({
       data: {
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone?.trim() || null,
-        subject: subject.trim(),
-        message: message.trim(),
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        subject: trimmedSubject,
+        message: trimmedMessage,
       }
     });
 
-    // Notify Sunil Punekar via email (mocked — replace with real SMTP when available)
-    await sendEmailNotification({
-      to: 'sunilpunekar@trendtechnologies.com.sg',
-      subject: `[SmartGate OS] New Contact: ${subject.trim()}`,
-      html: `
-        <h2>New Contact Form Submission</h2>
-        <table style="border-collapse:collapse;width:100%">
-          <tr><td style="padding:8px;border:1px solid #ddd;font-weight:600">Name</td><td style="padding:8px;border:1px solid #ddd">${name}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd;font-weight:600">Email</td><td style="padding:8px;border:1px solid #ddd">${email}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd;font-weight:600">Phone</td><td style="padding:8px;border:1px solid #ddd">${phone || 'Not provided'}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd;font-weight:600">Subject</td><td style="padding:8px;border:1px solid #ddd">${subject}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd;font-weight:600">Message</td><td style="padding:8px;border:1px solid #ddd">${message}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd;font-weight:600">Submitted At</td><td style="padding:8px;border:1px solid #ddd">${new Date().toLocaleString()}</td></tr>
-        </table>
-        <p style="margin-top:16px;color:#666">This message was submitted via the SmartGate OS contact form.</p>
-      `,
-      text: `New contact from ${name} <${email}>\nPhone: ${phone || 'N/A'}\nSubject: ${subject}\n\n${message}`
+    // 2. Find all Super Admins to send in-app notifications
+    const superAdmins = await prisma.user.findMany({
+      where: { role: 'SUPER_ADMIN' },
+      select: { id: true, email: true }
     });
 
-    // Also notify via backend console (for admin awareness)
-    await sendEmailNotification({
-      to: 'punekarsunil1995@gmail.com',
-      subject: `[SmartGate OS] New Contact: ${subject.trim()}`,
-      html: `<p>From: ${name} &lt;${email}&gt;</p><p>${message}</p>`,
-      text: `From: ${name} <${email}>\n${message}`
-    });
+    // 3. Create in-app notification for each Super Admin
+    for (const admin of superAdmins) {
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: admin.id,
+            title: `📬 New Contact: ${trimmedSubject.slice(0, 40)}`,
+            message: `From: ${trimmedName} (${trimmedEmail}${trimmedPhone ? `, Tel: ${trimmedPhone}` : ''})\nMessage: ${trimmedMessage.slice(0, 150)}...`,
+            type: 'INFO',
+            priority: 'HIGH',
+            metadata: JSON.stringify({
+              contactId: submission.id,
+              name: trimmedName,
+              email: trimmedEmail,
+              phone: trimmedPhone,
+              subject: trimmedSubject,
+              link: '/admin/contacts'
+            })
+          }
+        });
+
+        // Real-time socket alert
+        emitToUser(admin.id, 'notification', {
+          title: `📬 New Contact Inquiry: ${trimmedSubject}`,
+          message: `From ${trimmedName} (${trimmedEmail})`
+        });
+      } catch (notifErr) {
+        console.warn('Failed to notify super admin:', admin.id, notifErr);
+      }
+    }
+
+    // 4. Send emails (wrapped in try/catch so email transport failure never breaks submission)
+    try {
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; borderRadius: 8px;">
+          <div style="background: #1e3a8a; color: white; padding: 16px; borderRadius: 6px 6px 0 0; margin: -20px -20px 20px -20px;">
+            <h2 style="margin: 0; font-size: 1.25rem;">📬 New SmartGate OS Contact Submission</h2>
+          </div>
+          <table style="border-collapse: collapse; width: 100%; margin-bottom: 20px;">
+            <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background: #f8fafc; width: 30%;">Sender Name</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${trimmedName}</td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background: #f8fafc;">Email</td><td style="padding: 10px; border: 1px solid #e2e8f0;"><a href="mailto:${trimmedEmail}">${trimmedEmail}</a></td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background: #f8fafc;">Phone</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${trimmedPhone || 'Not provided'}</td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background: #f8fafc;">Subject</td><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; color: #1e3a8a;">${trimmedSubject}</td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background: #f8fafc;">Message</td><td style="padding: 10px; border: 1px solid #e2e8f0; white-space: pre-wrap;">${trimmedMessage}</td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background: #f8fafc;">Submitted At</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${new Date().toLocaleString()}</td></tr>
+          </table>
+          <p style="color: #64748b; font-size: 0.85rem; border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 20px;">
+            Submitted via SmartGate OS Contact Form · Trend Technologies
+          </p>
+        </div>
+      `;
+
+      // Email Sunil Punekar (official & fallback)
+      await sendEmailNotification({
+        to: 'sunilpunekar@trendtechnologies.com.sg',
+        subject: `[SmartGate OS] New Contact: ${trimmedSubject}`,
+        html: emailHtml,
+        text: `New contact from ${trimmedName} <${trimmedEmail}>\nPhone: ${trimmedPhone || 'N/A'}\nSubject: ${trimmedSubject}\n\n${trimmedMessage}`
+      });
+
+      await sendEmailNotification({
+        to: 'punekarsunil1995@gmail.com',
+        subject: `[SmartGate OS] New Contact: ${trimmedSubject}`,
+        html: emailHtml,
+        text: `New contact from ${trimmedName} <${trimmedEmail}>\nPhone: ${trimmedPhone || 'N/A'}\nSubject: ${trimmedSubject}\n\n${trimmedMessage}`
+      });
+
+      // Email all Super Admins
+      for (const admin of superAdmins) {
+        if (admin.email && admin.email !== 'punekarsunil1995@gmail.com' && admin.email !== 'sunilpunekar@trendtechnologies.com.sg') {
+          await sendEmailNotification({
+            to: admin.email,
+            subject: `[SmartGate OS Admin] Contact Form: ${trimmedSubject}`,
+            html: emailHtml,
+            text: `Contact from ${trimmedName} <${trimmedEmail}>\nSubject: ${trimmedSubject}\n\n${trimmedMessage}`
+          });
+        }
+      }
+    } catch (emailErr) {
+      console.error('Email dispatch error (non-fatal):', emailErr);
+    }
 
     res.status(201).json({
       success: true,
@@ -69,7 +138,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // ── GET /api/contacts  ── Super Admin: list all submissions ─────────────────
-router.get('/', authenticate, requireRoles(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', authenticate, requireRoles('SUPER_ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -87,10 +156,39 @@ router.get('/', authenticate, requireRoles(['SUPER_ADMIN']), async (req: Authent
       prisma.contactSubmission.count({ where })
     ]);
 
+    // Check if any submission email belongs to a registered user
+    const uniqueEmails = [...new Set(submissions.map(s => s.email.toLowerCase()))];
+    const registeredUsers = await prisma.user.findMany({
+      where: { email: { in: uniqueEmails } },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeCode: true,
+            designation: true,
+            department: true
+          }
+        }
+      }
+    });
+
+    const userMap = new Map(registeredUsers.map(u => [u.email.toLowerCase(), u]));
+
+    const enrichedSubmissions = submissions.map(sub => ({
+      ...sub,
+      matchedUser: userMap.get(sub.email.toLowerCase()) || null
+    }));
+
     res.json({
       success: true,
       data: {
-        submissions,
+        submissions: enrichedSubmissions,
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
       }
     });
@@ -100,7 +198,7 @@ router.get('/', authenticate, requireRoles(['SUPER_ADMIN']), async (req: Authent
 });
 
 // ── PATCH /api/contacts/:id/read  ── Mark as read ───────────────────────────
-router.patch('/:id/read', authenticate, requireRoles(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:id/read', authenticate, requireRoles('SUPER_ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const submission = await prisma.contactSubmission.update({
       where: { id: req.params.id },
@@ -113,7 +211,7 @@ router.patch('/:id/read', authenticate, requireRoles(['SUPER_ADMIN']), async (re
 });
 
 // ── DELETE /api/contacts/:id  ── Super Admin: delete submission ─────────────
-router.delete('/:id', authenticate, requireRoles(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', authenticate, requireRoles('SUPER_ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     await prisma.contactSubmission.delete({ where: { id: req.params.id } });
     res.json({ success: true, message: 'Submission deleted.' });
@@ -123,3 +221,4 @@ router.delete('/:id', authenticate, requireRoles(['SUPER_ADMIN']), async (req: A
 });
 
 export default router;
+
