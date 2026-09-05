@@ -271,12 +271,13 @@ function ContactCard({ sub, onMarkRead, onDelete, onResetPassword }: {
 
 
 export default function ContactsAdminPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   // Reset password modal state
   const [resetModal, setResetModal] = useState<{
@@ -299,18 +300,30 @@ export default function ContactsAdminPage() {
 
   const fetchSubmissions = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
+    setFetchError('');
     try {
       const res = await api.get(`/contacts?limit=100${unreadOnly ? '&unread=true' : ''}`);
       if (res.data?.success) {
         setSubmissions(res.data.data.submissions || []);
+      } else {
+        setFetchError(res.data?.message || 'Failed to load contact submissions.');
       }
-    } catch { /* silent */ } finally {
+    } catch (err: any) {
+      console.error('Error loading contacts:', err);
+      setFetchError(err.response?.data?.message || 'Failed to connect to server.');
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [unreadOnly]);
 
-  useEffect(() => { fetchSubmissions(); }, [fetchSubmissions]);
+  useEffect(() => {
+    if (!authLoading && user?.role === 'SUPER_ADMIN') {
+      fetchSubmissions();
+    } else if (!authLoading && (!user || user.role !== 'SUPER_ADMIN')) {
+      setLoading(false);
+    }
+  }, [fetchSubmissions, authLoading, user]);
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -379,8 +392,27 @@ export default function ContactsAdminPage() {
     }
   };
 
+  if (authLoading) {
+    return <AppLayout><PageLoader /></AppLayout>;
+  }
+
   if (!user || user.role !== 'SUPER_ADMIN') {
-    return <AppLayout><div style={{ padding: 32, textAlign: 'center', color: '#dc2626' }}>Access Denied</div></AppLayout>;
+    return (
+      <AppLayout>
+        <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🔒</div>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>
+            Access Restricted
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: 20 }}>
+            You must be logged in as a <strong>Super Admin</strong> to access contact submissions.
+          </p>
+          <a href="/dashboard" className="btn btn-primary" style={{ display: 'inline-flex' }}>
+            Return to Dashboard
+          </a>
+        </div>
+      </AppLayout>
+    );
   }
 
   const filtered = submissions.filter(s =>
@@ -390,8 +422,6 @@ export default function ContactsAdminPage() {
   );
 
   const unreadCount = submissions.filter(s => !s.isRead).length;
-
-  if (loading) return <AppLayout><PageLoader /></AppLayout>;
 
   return (
     <AppLayout>
@@ -473,8 +503,25 @@ export default function ContactsAdminPage() {
           ))}
         </div>
 
-        {/* List */}
-        {filtered.length === 0 ? (
+        {/* List content / Loading / Error states */}
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', gap: 12 }}>
+            <Spinner size="lg" />
+            <p style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading contact submissions…</p>
+          </div>
+        ) : fetchError ? (
+          <div style={{
+            padding: '24px', background: '#fef2f2', border: '1px solid #fee2e2',
+            borderRadius: 12, textAlign: 'center', margin: '20px 0'
+          }}>
+            <AlertCircle size={32} color="#dc2626" style={{ margin: '0 auto 8px' }} />
+            <div style={{ fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>Failed to load contact submissions</div>
+            <div style={{ fontSize: '0.82rem', color: '#b91c1c', marginBottom: 14 }}>{fetchError}</div>
+            <button className="btn btn-sm btn-primary" onClick={() => fetchSubmissions(true)}>
+              <RefreshCw size={12} /> Try Again
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', color: '#94a3b8' }}>
             <MessageSquare size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
             <div style={{ fontWeight: 600, fontSize: '1rem' }}>

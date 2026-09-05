@@ -172,13 +172,24 @@ router.get('/', authenticate, requireRoles('SUPER_ADMIN'), async (req: Authentic
             lastName: true,
             employeeCode: true,
             designation: true,
-            department: true
+            department: {
+              select: { name: true }
+            }
           }
         }
       }
     });
 
-    const userMap = new Map(registeredUsers.map(u => [u.email.toLowerCase(), u]));
+    const userMap = new Map(registeredUsers.map(u => [
+      u.email.toLowerCase(),
+      {
+        ...u,
+        employee: u.employee ? {
+          ...u.employee,
+          department: u.employee.department?.name || ''
+        } : null
+      }
+    ]));
 
     const enrichedSubmissions = submissions.map(sub => ({
       ...sub,
