@@ -76,18 +76,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       const res = await api.get('/auth/me');
-      if (res.data?.success) {
+      if (res?.data?.success && res?.data?.data) {
         const userData = res.data.data;
         // Fetch additional roles if any
         try {
           const rolesRes = await api.get(`/users/${userData.id}/roles`);
-          if (rolesRes.data?.success) {
+          if (rolesRes?.data?.success && rolesRes?.data?.data?.allRoles) {
             userData.roles = rolesRes.data.data.allRoles;
           }
         } catch {
           userData.roles = [userData.role];
         }
         setUser(userData);
+      } else {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        setUser(null);
       }
     } catch {
       localStorage.removeItem('access_token');
