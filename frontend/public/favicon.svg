@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f8fafc"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded card -->
+  <rect width="128" height="128" rx="28" fill="url(#bgGrad)"/>
+  <rect width="126" height="126" x="1" y="1" rx="27" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- Golden Orbit Swoosh (Trend Technologies signature arc) -->
+  <path d="M 18,74 C 14,92 42,108 74,106 C 102,104 116,84 112,62 C 108,44 88,34 68,32 C 84,33 103,42 105,58 C 107,76 89,94 62,94 C 36,94 20,84 18,74 Z" fill="url(#goldGrad)"/>
+
+  <!-- Trend text stylized in Navy Blue -->
+  <text x="50%" y="67" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-weight="900" font-style="italic" font-size="34" fill="#002855" letter-spacing="-1.5">
+    trend
+  </text>
+  
+  <!-- TECHNOLOGIES subtext -->
+  <text x="50%" y="82" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" font-size="7.5" fill="#002855" letter-spacing="2.5">
+    TECHNOLOGIES
+  </text>
+</svg>
