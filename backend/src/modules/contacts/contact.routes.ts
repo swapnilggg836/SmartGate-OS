@@ -7,6 +7,29 @@ import { emitToUser } from '../../lib/socket';
 
 const router = Router();
 
+// Helper: Auto-create ContactSubmission table in MySQL if it does not exist
+async function ensureContactTable() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`ContactSubmission\` (
+        \`id\` VARCHAR(191) NOT NULL PRIMARY KEY,
+        \`name\` VARCHAR(191) NOT NULL,
+        \`email\` VARCHAR(191) NOT NULL,
+        \`phone\` VARCHAR(50) NULL,
+        \`subject\` VARCHAR(255) NOT NULL,
+        \`message\` TEXT NOT NULL,
+        \`isRead\` BOOLEAN NOT NULL DEFAULT FALSE,
+        \`repliedAt\` DATETIME(3) NULL,
+        \`createdAt\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        INDEX \`ContactSubmission_isRead_idx\` (\`isRead\`),
+        INDEX \`ContactSubmission_createdAt_idx\` (\`createdAt\`)
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    `);
+  } catch (e: any) {
+    console.warn('ensureContactTable warning:', e?.message || e);
+  }
+}
+
 // ── POST /api/contacts  ── Public: submit contact form ──────────────────────
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -26,6 +49,9 @@ router.post('/', async (req: Request, res: Response) => {
     const trimmedName = name.trim();
     const trimmedPhone = phone?.trim() || null;
     const trimmedMessage = message.trim();
+
+    // Auto-create table if not exists
+    await ensureContactTable();
 
     // 1. Save submission to database
     const submission = await prisma.contactSubmission.create({
@@ -140,6 +166,7 @@ router.post('/', async (req: Request, res: Response) => {
 // ── GET /api/contacts  ── Super Admin: list all submissions ─────────────────
 router.get('/', authenticate, requireRoles('SUPER_ADMIN'), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await ensureContactTable();
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const unreadOnly = req.query.unread === 'true';
