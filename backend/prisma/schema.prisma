@@ -556,3 +556,18 @@ model PasswordResetOtp {
   @@index([email])
   @@index([otp])
 }
+
+model ContactSubmission {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(191)
+  email       String   @db.VarChar(191)
+  phone       String?  @db.VarChar(50)
+  subject     String   @db.VarChar(255)
+  message     String   @db.Text
+  isRead      Boolean  @default(false)
+  repliedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([isRead])
+  @@index([createdAt])
+}

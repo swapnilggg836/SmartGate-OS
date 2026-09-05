@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Sidebar, Navbar, MobileNav } from '@/components/layout/Navigation';
+import { AppFooter } from '@/components/layout/Footer';
 import { PageLoader } from '@/components/ui/Spinner';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -22,6 +23,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/users': 'User Management',
   '/admin/departments': 'Departments',
   '/admin/visitors': 'Visitor Management',
+  '/admin/contacts': 'Contact Submissions',
   '/authority': 'Authority Connections',
   '/authority/my-team': 'My Team',
   '/admin/company': 'Company Overview',
@@ -38,15 +40,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const title = PAGE_TITLES[pathname] || 'SmartGate OS';
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="main-content">
+      <div className="main-content" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
         <Navbar onMenuClick={() => setSidebarOpen(true)} title={title} />
-        <main className="page-content">
+        <main className="page-content" style={{ flex: 1 }}>
           {children}
         </main>
+        <AppFooter />
       </div>
       <MobileNav />
     </div>
   );
 }
+

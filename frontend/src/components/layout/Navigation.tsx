@@ -2,13 +2,15 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { initials } from '@/lib/utils';
+import { ContactModal } from '@/components/ui/ContactModal';
 import {
   LayoutDashboard, FileText, LogOut, User, Bell, Shield, Users, Calendar,
-  ClipboardList, Settings, Menu, X, QrCode, UserCheck, BookOpen, UserPlus
+  ClipboardList, Settings, Menu, X, QrCode, UserCheck, BookOpen, UserPlus, MessageSquare
 } from 'lucide-react';
 
 interface NavItem {
@@ -45,6 +47,7 @@ function useNavItems(role: string, pendingCount: number, unread: number): NavIte
     { label: 'Company Report', href: '/admin/company', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN', 'GM'] },
     { label: 'Reports', href: '/admin/reports', icon: <BookOpen size={16} />, roles: ['SUPER_ADMIN', 'HR'] },
     { label: 'Audit Logs', href: '/admin/audit', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN'] },
+    { label: 'Contacts', href: '/admin/contacts', icon: <MessageSquare size={16} />, roles: ['SUPER_ADMIN'] },
     // Common
     { label: 'Notifications', href: '/notifications', icon: <Bell size={16} />, badge: unread || undefined, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'GM', 'EMPLOYEE', 'SECURITY_GUARD'] },
     { label: 'Profile', href: '/profile', icon: <User size={16} />, roles: ['SUPER_ADMIN', 'HR', 'MANAGER', 'GM', 'EMPLOYEE', 'SECURITY_GUARD'] },
@@ -173,40 +176,63 @@ export function Navbar({ onMenuClick, title }: { onMenuClick: () => void; title:
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const emp = user?.employee;
+  const [contactOpen, setContactOpen] = useState(false);
 
   return (
-    <header className="navbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button
-          onClick={onMenuClick}
-          className="navbar-icon-btn mobile-hamburger"
-          aria-label="Toggle Navigation Menu"
-        >
-          <Menu size={18} />
-        </button>
-        <h1 className="navbar-title">{title}</h1>
-      </div>
+    <>
+      <header className="navbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={onMenuClick}
+            className="navbar-icon-btn mobile-hamburger"
+            aria-label="Toggle Navigation Menu"
+          >
+            <Menu size={18} />
+          </button>
+          <h1 className="navbar-title">{title}</h1>
+        </div>
 
-      <div className="navbar-right">
-        <Link href="/notifications" className="navbar-icon-btn" aria-label="Notifications">
-          <Bell size={16} />
-          {unreadCount > 0 && <span className="notification-dot" />}
-        </Link>
+        <div className="navbar-right">
+          {/* Contact Us */}
+          <button
+            onClick={() => setContactOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+              color: 'white', border: 'none', borderRadius: 8,
+              padding: '7px 13px', fontWeight: 700, fontSize: '0.78rem',
+              cursor: 'pointer', boxShadow: '0 2px 8px rgba(29,78,216,0.25)',
+              transition: 'transform 0.15s',
+              marginRight: 4,
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; }}
+          >
+            <MessageSquare size={13} />
+            <span style={{ display: 'none' }} className="desktop-only">Contact Us</span>
+          </button>
 
-        <Link href="/profile" className="navbar-user-chip">
-          <div className="navbar-user-chip-avatar">
-            {emp?.avatarUrl ? (
-              <img src={emp.avatarUrl} alt="" />
-            ) : (
-              initials(emp?.firstName, emp?.lastName)
-            )}
-          </div>
-          <span className="navbar-user-chip-name">
-            {emp ? `${emp.firstName} ${emp.lastName}` : user?.email}
-          </span>
-        </Link>
-      </div>
-    </header>
+          <Link href="/notifications" className="navbar-icon-btn" aria-label="Notifications">
+            <Bell size={16} />
+            {unreadCount > 0 && <span className="notification-dot" />}
+          </Link>
+
+          <Link href="/profile" className="navbar-user-chip">
+            <div className="navbar-user-chip-avatar">
+              {emp?.avatarUrl ? (
+                <img src={emp.avatarUrl} alt="" />
+              ) : (
+                initials(emp?.firstName, emp?.lastName)
+              )}
+            </div>
+            <span className="navbar-user-chip-name">
+              {emp ? `${emp.firstName} ${emp.lastName}` : user?.email}
+            </span>
+          </Link>
+        </div>
+      </header>
+      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
+    </>
   );
 }
 

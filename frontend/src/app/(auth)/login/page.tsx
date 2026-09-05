@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
-import { Shield, Mail, Lock, AlertCircle, ArrowRight, QrCode, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { Shield, Mail, Lock, AlertCircle, ArrowRight, QrCode, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff, MessageSquare } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
+import { ContactModal } from '@/components/ui/ContactModal';
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -25,6 +27,8 @@ export default function LoginPage() {
   }, [user, router]);
 
   // Forgot password / OTP Modal state
+  const [contactOpen, setContactOpen] = useState(false);
+
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -118,13 +122,54 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--blue-50)',
+      background: 'linear-gradient(160deg, #eff6ff 0%, #dbeafe 40%, #f8fafc 100%)',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px 16px'
+      padding: '0',
+      position: 'relative',
     }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
+      {/* Top Bar */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+        background: 'white',
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 28px', height: 64,
+      }}>
+        {/* Trend Technologies Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Image
+            src="/trend-logo.jpg"
+            alt="Trend Technologies"
+            width={140}
+            height={48}
+            style={{ objectFit: 'contain', height: 44, width: 'auto' }}
+            priority
+          />
+        </div>
+        {/* Contact Us Button */}
+        <button
+          onClick={() => setContactOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+            color: 'white', border: 'none', borderRadius: 10,
+            padding: '9px 18px', fontWeight: 700, fontSize: '0.85rem',
+            cursor: 'pointer', boxShadow: '0 4px 12px rgba(29,78,216,0.3)',
+            transition: 'transform 0.15s, box-shadow 0.15s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 16px rgba(29,78,216,0.4)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(29,78,216,0.3)'; }}
+        >
+          <MessageSquare size={15} />
+          Contact Us
+        </button>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 420, padding: '24px 16px', marginTop: 64 }}>
         {/* Brand */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{
@@ -516,7 +561,9 @@ export default function LoginPage() {
           )}
         </div>
       </Modal>
+
+      {/* Contact Modal */}
+      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
     </div>
   );
 }
-
