@@ -122,34 +122,29 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(160deg, #eff6ff 0%, #dbeafe 40%, #f8fafc 100%)',
+      background: 'linear-gradient(160deg, #e0ecff 0%, #eff6ff 50%, #f1f5f9 100%)',
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '0',
-      position: 'relative',
     }}>
-      {/* Top Bar */}
+      {/* ── Fixed Top Bar ─────────────────────────────────────── */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        background: 'white',
+        background: 'rgba(255,255,255,0.95)',
+        backdropFilter: 'blur(12px)',
         borderBottom: '1px solid #e2e8f0',
-        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 28px', height: 64,
+        padding: '0 32px', height: 64,
       }}>
         {/* Trend Technologies Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Image
-            src="/trend-logo.jpg"
-            alt="Trend Technologies"
-            width={140}
-            height={48}
-            style={{ objectFit: 'contain', height: 44, width: 'auto' }}
-            priority
-          />
-        </div>
+        <Image
+          src="/trend-logo.jpg"
+          alt="Trend Technologies"
+          width={160}
+          height={52}
+          style={{ objectFit: 'contain', maxHeight: 46, width: 'auto' }}
+          priority
+        />
         {/* Contact Us Button */}
         <button
           onClick={() => setContactOpen(true)}
@@ -157,201 +152,273 @@ export default function LoginPage() {
             display: 'flex', alignItems: 'center', gap: 8,
             background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
             color: 'white', border: 'none', borderRadius: 10,
-            padding: '9px 18px', fontWeight: 700, fontSize: '0.85rem',
-            cursor: 'pointer', boxShadow: '0 4px 12px rgba(29,78,216,0.3)',
+            padding: '9px 20px', fontWeight: 700, fontSize: '0.875rem',
+            cursor: 'pointer', boxShadow: '0 4px 14px rgba(29,78,216,0.35)',
             transition: 'transform 0.15s, box-shadow 0.15s',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 16px rgba(29,78,216,0.4)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(29,78,216,0.3)'; }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 18px rgba(29,78,216,0.45)';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'none';
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 14px rgba(29,78,216,0.35)';
+          }}
         >
           <MessageSquare size={15} />
           Contact Us
         </button>
       </div>
 
-      <div style={{ width: '100%', maxWidth: 420, padding: '24px 16px', marginTop: 64 }}>
-        {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'var(--blue-700)', color: 'white',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 12, boxShadow: '0 4px 14px rgba(29,78,216,0.3)'
-          }}>
-            <Shield size={24} />
-          </div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--slate-800)', marginBottom: 4 }}>
-            SmartGate OS
-          </h1>
-          <p style={{ color: 'var(--slate-500)', fontSize: '0.875rem' }}>
-            Campus Access & Visitor Management System
-          </p>
-        </div>
+      {/* ── Scrollable body — centered content ────────────────── */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 80, /* top-bar 64px + 16px gap */
+        paddingBottom: 32,
+        paddingLeft: 16,
+        paddingRight: 16,
+      }}>
+        <div style={{ width: '100%', maxWidth: 440 }}>
 
-        {/* Visitor Fast-Track Entry Banner (No login required) */}
-        <div style={{
-          background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
-          borderRadius: 14,
-          padding: '16px 18px',
-          marginBottom: 20,
-          color: 'white',
-          boxShadow: '0 8px 24px rgba(37, 99, 235, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          border: '1px solid rgba(255,255,255,0.2)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Brand Header */}
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
             <div style={{
-              width: 44, height: 44, borderRadius: 12,
-              background: 'rgba(255,255,255,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0
+              width: 60, height: 60, borderRadius: 16,
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+              color: 'white',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: 14, boxShadow: '0 8px 24px rgba(29,78,216,0.35)',
             }}>
-              <QrCode size={22} color="white" />
+              <Shield size={28} />
             </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
-                Are you a Visitor?
+            <h1 style={{
+              fontSize: '1.6rem', fontWeight: 800,
+              color: '#1e293b', marginBottom: 4, letterSpacing: '-0.02em',
+            }}>
+              SmartGate OS
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 500 }}>
+              Campus Access &amp; Visitor Management System
+            </p>
+          </div>
+
+          {/* Visitor Fast-Track Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
+            borderRadius: 14, padding: '15px 18px', marginBottom: 16,
+            color: 'white', boxShadow: '0 6px 20px rgba(37,99,235,0.30)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: 11,
+                background: 'rgba(255,255,255,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <QrCode size={21} color="white" />
               </div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: 2 }}>
-                No account or login needed
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', lineHeight: 1.2 }}>Are you a Visitor?</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.88, marginTop: 2 }}>No account or login needed</div>
               </div>
             </div>
+            <Link
+              href="/visitor-register"
+              style={{
+                background: 'white', color: '#1d4ed8',
+                padding: '8px 14px', borderRadius: 9,
+                fontSize: '0.78rem', fontWeight: 800,
+                textDecoration: 'none',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                whiteSpace: 'nowrap', boxShadow: '0 3px 10px rgba(0,0,0,0.14)',
+                transition: 'transform 0.15s',
+              }}
+            >
+              Visitor Entry <ArrowRight size={13} />
+            </Link>
           </div>
-          <Link
-            href="/visitor-register"
-            style={{
-              background: 'white',
-              color: '#1d4ed8',
-              padding: '9px 14px',
-              borderRadius: 10,
-              fontSize: '0.8rem',
-              fontWeight: 800,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-              transition: 'transform 0.15s',
-            }}
-          >
-            Visitor Entry <ArrowRight size={14} />
-          </Link>
-        </div>
 
-        {/* Card */}
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title" style={{ fontSize: '1rem' }}>Employee / Staff Sign In</h2>
-          </div>
-          <div className="card-body">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="alert alert-error">
-                  <AlertCircle size={15} />
-                  <span>{error}</span>
+          {/* ── Login Card ─────────────────────────────────────── */}
+          <div style={{
+            background: 'white',
+            borderRadius: 18,
+            border: '1px solid #dde5f0',
+            boxShadow: '0 8px 32px rgba(15,23,42,0.10), 0 2px 8px rgba(15,23,42,0.06)',
+            overflow: 'hidden',
+          }}>
+            {/* Card Header */}
+            <div style={{
+              padding: '18px 24px',
+              borderBottom: '1px solid #f1f5f9',
+              background: '#fafcff',
+            }}>
+              <h2 style={{
+                fontSize: '1rem', fontWeight: 700, color: '#1e293b',
+                display: 'flex', alignItems: 'center', gap: 8, margin: 0,
+              }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 8,
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Shield size={14} color="white" />
                 </div>
-              )}
+                Employee / Staff Sign In
+              </h2>
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">
-                  Work Email Address <span className="required">*</span>
-                </label>
-                <div className="form-input-icon">
-                  <Mail size={15} />
-                  <input
-                    type="email"
-                    className="form-control"
-                    placeholder="name@company.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                  />
-                </div>
-              </div>
+            {/* Card Body */}
+            <div style={{ padding: '24px' }}>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {error && (
+                  <div style={{
+                    background: '#fef2f2', border: '1px solid #fecaca',
+                    borderRadius: 10, padding: '10px 14px',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    color: '#dc2626', fontSize: '0.8125rem',
+                  }}>
+                    <AlertCircle size={15} />
+                    <span>{error}</span>
+                  </div>
+                )}
 
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>
-                    Password <span className="required">*</span>
+                {/* Email */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>
+                    Work Email Address <span style={{ color: '#ef4444' }}>*</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={openForgotModal}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--blue-700)',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      padding: 0,
-                      textDecoration: 'none'
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-                    onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
-                  >
-                    Forgot Password?
-                  </button>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Mail size={15} style={{ position: 'absolute', left: 12, color: '#94a3b8', flexShrink: 0 }} />
+                    <input
+                      type="email"
+                      placeholder="name@company.com"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      required
+                      autoComplete="email"
+                      style={{
+                        width: '100%', paddingLeft: 38, paddingRight: 12,
+                        paddingTop: 10, paddingBottom: 10,
+                        border: '1.5px solid #e2e8f0', borderRadius: 10,
+                        fontSize: '0.875rem', color: '#1e293b',
+                        outline: 'none', background: '#f8fafc',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = '#1d4ed8'; e.currentTarget.style.background = 'white'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#f8fafc'; }}
+                    />
+                  </div>
                 </div>
-                <div className="form-input-icon" style={{ position: 'relative' }}>
-                  <Lock size={15} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className="form-control"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                    autoComplete="current-password"
-                    style={{ paddingRight: 38 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: 'absolute',
-                      right: 10,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--slate-400)',
-                      padding: 4
-                    }}
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
 
-              <button
-                type="submit"
-                className="btn btn-primary btn-full"
-                style={{ padding: '11px 16px', fontSize: '0.9rem', marginTop: 4 }}
-                disabled={loading}
-              >
-                {loading ? <><Spinner white size="sm" /> Signing in…</> : <>Sign In <ArrowRight size={15} /></>}
-              </button>
-            </form>
+                {/* Password */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>
+                      Password <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={openForgotModal}
+                      style={{
+                        background: 'none', border: 'none',
+                        color: '#1d4ed8', fontSize: '0.78rem', fontWeight: 600,
+                        cursor: 'pointer', padding: 0,
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.textDecoration = 'underline'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.textDecoration = 'none'; }}
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Lock size={15} style={{ position: 'absolute', left: 12, color: '#94a3b8', flexShrink: 0 }} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      style={{
+                        width: '100%', paddingLeft: 38, paddingRight: 44,
+                        paddingTop: 10, paddingBottom: 10,
+                        border: '1.5px solid #e2e8f0', borderRadius: 10,
+                        fontSize: '0.875rem', color: '#1e293b',
+                        outline: 'none', background: '#f8fafc',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = '#1d4ed8'; e.currentTarget.style.background = 'white'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#f8fafc'; }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute', right: 10,
+                        top: '50%', transform: 'translateY(-50%)',
+                        background: 'none', border: 'none',
+                        cursor: 'pointer', color: '#94a3b8', padding: 4,
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '12px 16px',
+                    background: loading
+                      ? '#94a3b8'
+                      : 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+                    color: 'white', border: 'none', borderRadius: 10,
+                    fontSize: '0.9375rem', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    boxShadow: loading ? 'none' : '0 4px 14px rgba(29,78,216,0.35)',
+                    transition: 'all 0.15s',
+                    marginTop: 2,
+                  }}
+                >
+                  {loading ? <><Spinner white size="sm" /> Signing in…</> : <>Sign In <ArrowRight size={16} /></>}
+                </button>
+              </form>
+            </div>
+
+            {/* Card Footer */}
+            <div style={{
+              padding: '14px 24px',
+              borderTop: '1px solid #f1f5f9',
+              background: '#fafcff',
+              textAlign: 'center',
+              display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <span style={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                Don&apos;t have an employee account?{' '}
+                <Link href="/register" style={{ color: '#1d4ed8', fontWeight: 700, textDecoration: 'none' }}>
+                  Create Account
+                </Link>
+              </span>
+              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                Visiting campus today?{' '}
+                <Link href="/visitor-register" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
+                  Fill Visitor Form (No Login Required) →
+                </Link>
+              </span>
+            </div>
           </div>
-          <div className="card-footer" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.8125rem' }}>
-              Don't have an employee account?{' '}
-              <Link href="/register" style={{ color: 'var(--blue-700)', fontWeight: 600, textDecoration: 'none' }}>
-                Create Account
-              </Link>
-            </span>
-            <span style={{ color: 'var(--slate-400)', fontSize: '0.75rem' }}>
-              Visiting campus today?{' '}
-              <Link href="/visitor-register" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
-                Fill Visitor Form (No Login Required) →
-              </Link>
+
+          {/* Powered by */}
+          <div style={{ textAlign: 'center', marginTop: 20 }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+              Powered by{' '}
+              <span style={{ fontWeight: 700, color: '#1e3a8a' }}>Trend Technologies</span>
+              {' '}· © {new Date().getFullYear()} SmartGate OS
             </span>
           </div>
         </div>
