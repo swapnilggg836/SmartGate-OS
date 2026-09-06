@@ -83,28 +83,16 @@ router.post('/seed', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/setup/sync-db - Ensure all new tables exist in production MySQL
+// POST /api/setup/sync-db - Ensure all tables exist in production MySQL
 router.post('/sync-db', async (req: Request, res: Response) => {
   try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS \`ContactSubmission\` (
-        \`id\` VARCHAR(191) NOT NULL PRIMARY KEY,
-        \`name\` VARCHAR(191) NOT NULL,
-        \`email\` VARCHAR(191) NOT NULL,
-        \`phone\` VARCHAR(50) NULL,
-        \`subject\` VARCHAR(255) NOT NULL,
-        \`message\` TEXT NOT NULL,
-        \`isRead\` BOOLEAN NOT NULL DEFAULT FALSE,
-        \`repliedAt\` DATETIME(3) NULL,
-        \`createdAt\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        INDEX \`ContactSubmission_isRead_idx\` (\`isRead\`),
-        INDEX \`ContactSubmission_createdAt_idx\` (\`createdAt\`)
-      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-    `);
+    const { syncDatabaseTables } = await import('../../services/db-sync.service');
+    const result = await syncDatabaseTables(prisma);
 
     return res.json({
       success: true,
-      message: 'Database tables verified and synchronized successfully.'
+      message: 'Database tables verified and synchronized successfully.',
+      details: result.results
     });
   } catch (err: any) {
     return res.status(500).json({

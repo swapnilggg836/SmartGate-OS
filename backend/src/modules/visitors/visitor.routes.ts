@@ -16,14 +16,30 @@ const router = Router();
 
 async function generateVisitId(): Promise<string> {
   const year = new Date().getFullYear();
-  const count = await prisma.visitorVisit.count();
-  return `VIS-${year}-${String(count + 1).padStart(5, '0')}`;
+  let count = await prisma.visitorVisit.count();
+  let candidate = '';
+  let exists = true;
+  while (exists) {
+    count++;
+    candidate = `VIS-${year}-${String(count).padStart(5, '0')}`;
+    const found = await prisma.visitorVisit.findUnique({ where: { visitId: candidate } });
+    if (!found) exists = false;
+  }
+  return candidate;
 }
 
 async function generatePassNumber(): Promise<string> {
   const year = new Date().getFullYear();
-  const count = await prisma.visitorPass.count();
-  return `VP-${year}-${String(count + 1).padStart(5, '0')}`;
+  let count = await prisma.visitorPass.count();
+  let candidate = '';
+  let exists = true;
+  while (exists) {
+    count++;
+    candidate = `VP-${year}-${String(count).padStart(5, '0')}`;
+    const found = await prisma.visitorPass.findUnique({ where: { passNumber: candidate } });
+    if (!found) exists = false;
+  }
+  return candidate;
 }
 
 function generateQrToken(): string {
@@ -326,37 +342,41 @@ router.post('/self-register', async (req: Request, res: Response) => {
 
     const hostName = hostUser.employee ? `${hostUser.employee.firstName} ${hostUser.employee.lastName}` : hostUser.email;
 
-    // Real-time alert to host
-    await prisma.notification.create({
-      data: {
-        userId: hostUserId,
-        title: '🚨 Visitor at Gate: Requesting Entry',
-        message: `${fullName} is at the entrance gate requesting to meet you for: "${purpose}". Tap to Approve or Reject.`,
-        type: 'ACTION_REQUIRED',
-        metadata: JSON.stringify({ visitId: visit.visitId, id: visit.id }),
-      },
-    });
+    // Real-time alert to host (non-blocking for registration success)
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: hostUserId,
+          title: '🚨 Visitor at Gate: Requesting Entry',
+          message: `${fullName} is at the entrance gate requesting to meet you for: "${purpose}". Tap to Approve or Reject.`,
+          type: 'ACTION_REQUIRED',
+          metadata: JSON.stringify({ visitId: visit.visitId, id: visit.id }),
+        },
+      });
 
-    emitToUser(hostUserId, 'visitor:gate_request', {
-      visitId: visit.visitId,
-      id: visit.id,
-      visitorName: fullName,
-      mobile,
-      organization: organization || 'Individual',
-      purpose,
-      photoUrl: photoUrl || null,
-      time: `${hh}:${mm}`,
-      hostName,
-    });
+      emitToUser(hostUserId, 'visitor:gate_request', {
+        visitId: visit.visitId,
+        id: visit.id,
+        visitorName: fullName,
+        mobile,
+        organization: organization || 'Individual',
+        purpose,
+        photoUrl: photoUrl || null,
+        time: `${hh}:${mm}`,
+        hostName,
+      });
 
-    emitToRole(UserRole.SECURITY_GUARD, 'visitor:gate_request', {
-      visitId: visit.visitId,
-      id: visit.id,
-      visitorName: fullName,
-      photoUrl: photoUrl || null,
-      hostName,
-      purpose,
-    });
+      emitToRole(UserRole.SECURITY_GUARD, 'visitor:gate_request', {
+        visitId: visit.visitId,
+        id: visit.id,
+        visitorName: fullName,
+        photoUrl: photoUrl || null,
+        hostName,
+        purpose,
+      });
+    } catch (notifErr) {
+      console.warn('⚠️ Notification/Socket alert skipped for visitor self-registration:', notifErr);
+    }
 
     return res.status(201).json({
       success: true,
@@ -374,7 +394,10 @@ router.post('/self-register', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Self-register error:', err);
-    return res.status(500).json({ success: false, message: 'Self-registration failed. Please try again or ask Security.' });
+    return res.status(500).json({
+      success: false,
+      message: err.message ? `Self-registration failed: ${err.message}` : 'Self-registration failed. Please try again or ask Security.'
+    });
   }
 });
 

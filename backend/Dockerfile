@@ -28,4 +28,4 @@ COPY --from=builder /app/backend/package.json ./backend/package.json
 
 EXPOSE 5000
 
-CMD ["node", "backend/dist/server.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node backend/dist/server.js"]

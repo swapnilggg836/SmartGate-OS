@@ -16,6 +16,11 @@ startBackgroundJobs();
 
 async function initDatabase() {
   try {
+    // 1. Ensure all tables (Visitor, Passes, Audit, etc.) exist in MySQL
+    const { syncDatabaseTables } = await import('./services/db-sync.service');
+    await syncDatabaseTables(prisma);
+
+    // 2. Check users and seed if empty
     const userCount = await prisma.user.count();
     if (userCount === 0) {
       console.log('🌱 Database is empty. Auto-seeding initial demo data and accounts...');
