@@ -112,7 +112,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptEngineering.id,
           designation: 'VP of Technology & Admin',
           phone: '+1 (555) 019-1001',
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },
@@ -134,7 +134,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptHR.id,
           designation: 'Senior HR Director',
           phone: '+1 (555) 019-1002',
-          avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },
@@ -156,7 +156,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptEngineering.id,
           designation: 'Engineering Team Lead',
           phone: '+1 (555) 019-1003',
-          avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },
@@ -184,7 +184,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptEngineering.id,
           designation: 'Senior Software Engineer',
           phone: '+91 98765 43210',
-          avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },
@@ -206,7 +206,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptEngineering.id,
           designation: 'QA Automation Engineer',
           phone: '+91 98765 43211',
-          avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },
@@ -228,7 +228,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptSecurity.id,
           designation: 'Chief Gate Security Officer',
           phone: '+91 98765 43299',
-          avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },
@@ -250,7 +250,7 @@ export async function seedDatabase(prismaClient: PrismaClient, cleanExisting: bo
           departmentId: deptEngineering.id,
           designation: 'General Manager (Operations & Strategy)',
           phone: '+91 98765 43000',
-          avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80'
+          avatarUrl: '/default-avatar.png'
         }
       }
     },

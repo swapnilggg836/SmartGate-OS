@@ -77,7 +77,7 @@ model Employee {
   departmentId   String          @db.VarChar(191)
   designation    String          @db.VarChar(100)
   phone          String          @db.VarChar(50)
-  avatarUrl      String?         @db.Text
+  avatarUrl      String?         @db.LongText
   joiningDate    DateTime        @default(now())
   // Denormalized fast-lookup authority IDs (populated when connection is ACTIVE)
   managerId      String?         @db.VarChar(191) // userId of connected manager

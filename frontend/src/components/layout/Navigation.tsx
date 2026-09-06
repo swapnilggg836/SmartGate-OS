@@ -146,12 +146,13 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         {/* User Footer */}
         <div className="sidebar-footer">
           <div className="sidebar-user">
-            <div className="sidebar-user-avatar">
-              {emp?.avatarUrl ? (
-                <img src={emp.avatarUrl} alt="" />
-              ) : (
-                initials(emp?.firstName, emp?.lastName)
-              )}
+            <div className="sidebar-user-avatar" style={{ overflow: 'hidden', borderRadius: '50%' }}>
+              <img
+                src={emp?.avatarUrl || '/default-avatar.png'}
+                alt=""
+                onError={e => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{displayName}</div>
@@ -218,12 +219,13 @@ export function Navbar({ onMenuClick, title }: { onMenuClick: () => void; title:
           </Link>
 
           <Link href="/profile" className="navbar-user-chip">
-            <div className="navbar-user-chip-avatar">
-              {emp?.avatarUrl ? (
-                <img src={emp.avatarUrl} alt="" />
-              ) : (
-                initials(emp?.firstName, emp?.lastName)
-              )}
+            <div className="navbar-user-chip-avatar" style={{ overflow: 'hidden', borderRadius: '50%' }}>
+              <img
+                src={emp?.avatarUrl || '/default-avatar.png'}
+                alt=""
+                onError={e => { (e.target as HTMLImageElement).src = '/default-avatar.png'; }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </div>
             <span className="navbar-user-chip-name">
               {emp ? `${emp.firstName} ${emp.lastName}` : user?.email}

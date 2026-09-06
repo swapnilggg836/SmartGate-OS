@@ -109,7 +109,7 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const defaultAvatar = avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`;
+    const defaultAvatar = avatarUrl || '/default-avatar.png';
 
     // Create User & Employee in MySQL transaction
     const newUser = await prisma.$transaction(async (tx) => {
@@ -427,7 +427,11 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
 router.put('/profile', authenticate, validateBody(updateProfileSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    const employeeId = req.user!.employeeId;
+    let employeeId = req.user!.employeeId;
+    if (!employeeId) {
+      const emp = await prisma.employee.findFirst({ where: { userId } });
+      if (emp) employeeId = emp.id;
+    }
 
     if (!employeeId) {
       return res.status(400).json({ success: false, message: 'No employee profile linked.' });
@@ -442,7 +446,7 @@ router.put('/profile', authenticate, validateBody(updateProfileSchema), async (r
         ...(lastName && { lastName }),
         ...(phone && { phone }),
         ...(designation && { designation }),
-        ...(avatarUrl && { avatarUrl })
+        ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || '/default-avatar.png' })
       },
       include: {
         department: true,

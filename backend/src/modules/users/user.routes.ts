@@ -95,7 +95,7 @@ router.post('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), 
             departmentId,
             designation,
             phone,
-            avatarUrl: avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150`
+            avatarUrl: avatarUrl || '/default-avatar.png'
           }
         }
       },
