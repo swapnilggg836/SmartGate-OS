@@ -160,9 +160,13 @@ export default function VisitorRegisterPage() {
         fetch(`${API_BASE}/visitors/public-status/${encodeURIComponent(savedId)}`)
           .then(res => res.json())
           .then(data => {
-            if (data.success && data.data && !['COMPLETED', 'CHECKED_OUT', 'REJECTED'].includes(data.data.status)) {
-              setTrackingVisitId(data.data.visitId || savedId);
-              setVisitStatus(data.data);
+            if (data.success && data.data) {
+              if (['COMPLETED', 'CHECKED_OUT', 'REJECTED'].includes(data.data.status)) {
+                try { localStorage.removeItem('smartgate_active_visit_id'); } catch {}
+              } else {
+                setTrackingVisitId(data.data.visitId || savedId);
+                setVisitStatus(data.data);
+              }
             }
           })
           .catch(() => {});
@@ -180,8 +184,11 @@ export default function VisitorRegisterPage() {
         const json = await res.json();
         if (json.success && json.data) {
           setVisitStatus(json.data);
-          if (['APPROVED', 'REJECTED', 'CHECKED_IN'].includes(json.data.status)) {
-            // Stop rapid polling once finalized
+          if (['COMPLETED', 'CHECKED_OUT', 'REJECTED'].includes(json.data.status)) {
+            try { localStorage.removeItem('smartgate_active_visit_id'); } catch {}
+            clearInterval(pollTimerRef.current);
+          } else if (['APPROVED', 'CHECKED_IN'].includes(json.data.status)) {
+            // Stop rapid polling once approved/checked-in
             clearInterval(pollTimerRef.current);
           }
         }
@@ -702,11 +709,70 @@ export default function VisitorRegisterPage() {
                   </p>
                 </div>
               )}
+              {/* STATUS: COMPLETED / CHECKED_OUT */}
+              {['COMPLETED', 'CHECKED_OUT'].includes(visitStatus?.status) && (
+                <div>
+                  <div style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: '50%',
+                    background: '#dcfce7',
+                    color: '#16a34a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 16px'
+                  }}>
+                    <CheckCircle2 size={40} />
+                  </div>
+                  <span style={{
+                    display: 'inline-block',
+                    background: '#dcfce7',
+                    color: '#15803d',
+                    padding: '4px 14px',
+                    borderRadius: 99,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    marginBottom: 10
+                  }}>
+                    ✓ Visit Completed · Entry Over
+                  </span>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 8px', color: '#0f172a' }}>
+                    Thank You For Visiting!
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 20 }}>
+                    Your meeting with <strong>{visitStatus.hostName}</strong> has concluded and you have checked out at Security.
+                  </p>
+                  <button
+                    onClick={() => {
+                      try { localStorage.removeItem('smartgate_active_visit_id'); } catch {}
+                      setTrackingVisitId(null);
+                      setVisitStatus(null);
+                    }}
+                    style={{
+                      background: '#1d4ed8',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 24px',
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Schedule / Register a New Visit →
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ textAlign: 'center' }}>
               <button
-                onClick={() => { setTrackingVisitId(null); setVisitStatus(null); }}
+                onClick={() => {
+                  try { localStorage.removeItem('smartgate_active_visit_id'); } catch {}
+                  setTrackingVisitId(null);
+                  setVisitStatus(null);
+                }}
                 style={{
                   background: 'none',
                   border: 'none',

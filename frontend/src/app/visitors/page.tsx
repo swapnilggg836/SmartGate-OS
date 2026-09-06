@@ -8,8 +8,12 @@ import { fmtDate, statusBadgeClass, statusLabel } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
-import { UserPlus, Users, CheckCircle2, XCircle, AlertTriangle, Search, QrCode, MessageCircle, Printer } from 'lucide-react';
+import {
+  UserPlus, Users, CheckCircle2, XCircle, AlertTriangle, Search,
+  QrCode, MessageCircle, Printer, LogOut, Share2, Copy, Check, ExternalLink
+} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { DigitalPassModal } from '@/components/visitors/DigitalPassModal';
 
 function HostSearch({ value, onChange }: { value: any; onChange: (h: any) => void }) {
   const [q, setQ] = useState('');
@@ -20,9 +24,14 @@ function HostSearch({ value, onChange }: { value: any; onChange: (h: any) => voi
     if (q.length < 2) { setResults([]); return; }
     const t = setTimeout(async () => {
       setLoading(true);
-      try { const r = await api.get(`/visitors/search-host?q=${encodeURIComponent(q)}`); setResults(r.data?.data || []); }
-      catch { setResults([]); }
-      finally { setLoading(false); }
+      try {
+        const r = await api.get(`/visitors/search-host?q=${encodeURIComponent(q)}`);
+        setResults(r.data?.data || []);
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
     }, 350);
     return () => clearTimeout(t);
   }, [q]);
@@ -79,21 +88,149 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
   const [form, setForm] = useState({ fullName: '', gender: 'MALE', mobile: '', email: '', organization: '', idType: '', purpose: '', description: '', visitDate: new Date().toISOString().split('T')[0], expectedEntryTime: '10:00', expectedExitTime: '11:00', numberOfVisitors: 1, vehicleNumber: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [inviteResult, setInviteResult] = useState<any | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const set = (k: string) => (e: React.ChangeEvent<any>) => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  useEffect(() => { if (open && user) setHost({ id: user.id, email: user.email, employee: user.employee, role: user.role }); }, [open, user]);
+  useEffect(() => {
+    if (open && user) {
+      setHost({ id: user.id, email: user.email, employee: user.employee, role: user.role });
+      setInviteResult(null);
+      setError('');
+    }
+  }, [open, user]);
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setSubmitting(true);
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
     if (!host) { setError('Please select the person to visit.'); setSubmitting(false); return; }
-    try { await api.post('/visitors/invite', { ...form, hostUserId: host.id, numberOfVisitors: Number(form.numberOfVisitors) }); onSuccess(); }
-    catch (err: any) { setError(err.response?.data?.message || 'Failed to invite visitor'); }
-    finally { setSubmitting(false); }
+    try {
+      const res = await api.post('/visitors/invite', {
+        ...form,
+        hostUserId: host.id,
+        numberOfVisitors: Number(form.numberOfVisitors)
+      });
+      if (res.data?.data) {
+        setInviteResult(res.data.data);
+      } else {
+        onSuccess();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to invite visitor');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (inviteResult) {
+    const { pass, passUrl, whatsappUrl, visit } = inviteResult;
+    const fullPassUrl = passUrl?.startsWith('http') ? passUrl : `${typeof window !== 'undefined' ? window.location.origin : ''}${passUrl}`;
+
+    return (
+      <Modal open={open} onClose={() => { onSuccess(); onClose(); }} title="Invitation Created Successfully!">
+        <div style={{ textAlign: 'center', padding: '10px 0' }}>
+          <div style={{
+            width: 54, height: 54, borderRadius: '50%', background: '#dcfce7', color: '#16a34a',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px'
+          }}>
+            <CheckCircle2 size={32} />
+          </div>
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>
+            Pass Generated for {form.fullName}
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 16px' }}>
+            Pass Number: <strong>{pass?.passNumber || visit?.visitId}</strong>
+          </p>
+
+          <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 20, textAlign: 'left' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
+              Visitor Pass URL:
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                readOnly
+                value={fullPassUrl}
+                className="form-control"
+                style={{ fontSize: '0.8rem', background: 'white' }}
+              />
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleCopy(fullPassUrl)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+              >
+                {copied ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {whatsappUrl && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{
+                  background: '#25D366',
+                  color: 'white',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  fontWeight: 700,
+                  padding: '12px'
+                }}
+              >
+                <MessageCircle size={18} /> Send Pass directly via WhatsApp
+              </a>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Link
+                href={fullPassUrl}
+                target="_blank"
+                className="btn btn-outline"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
+              >
+                <ExternalLink size={15} /> Preview Pass
+              </Link>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { onSuccess(); onClose(); }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="Invite a Visitor"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" form="invite-form" type="submit" disabled={submitting}>{submitting && <Spinner white size="sm" />} Send Invitation</button></>}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Invite a Visitor"
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" form="invite-form" type="submit" disabled={submitting}>
+          {submitting && <Spinner white size="sm" />} Send Invitation
+        </button>
+      </>}
+    >
       <form id="invite-form" onSubmit={submit} className="space-y-3">
         {error && <div className="alert alert-error"><AlertTriangle size={14} /><span>{error}</span></div>}
         <div style={{ background: 'var(--slate-50)', borderRadius: 8, padding: '12px 14px' }}>
@@ -142,6 +279,7 @@ export default function VisitorsPage() {
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [showQrPoster, setShowQrPoster] = useState(false);
+  const [selectedPassVisit, setSelectedPassVisit] = useState<any | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -155,6 +293,16 @@ export default function VisitorsPage() {
   const respond = async (visitId: string, action: string) => {
     try { await api.patch(`/visitors/${visitId}/respond`, { action }); load(); }
     catch (err: any) { alert(err.response?.data?.message || 'Failed'); }
+  };
+
+  const handleHostCheckout = async (visitId: string) => {
+    if (!confirm('Mark meeting as completed and authorize this visitor for exit checkout at Security?')) return;
+    try {
+      await api.patch(`/visitors/${visitId}/host-checkout`);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to authorize exit');
+    }
   };
 
   const pendingCount = incoming.filter(v => ['PENDING_HOST', 'WAITING'].includes(v.status)).length;
@@ -193,7 +341,10 @@ export default function VisitorsPage() {
       <div className="space-y-4">
         <div className="page-header">
           <div className="page-header-row">
-            <div><h1>Visitors</h1><p style={{ marginTop: 2 }}>Manage visitor invitations and requests</p></div>
+            <div>
+              <h1>Visitors</h1>
+              <p style={{ marginTop: 2 }}>Manage visitor invitations, approvals, and exit authorizations</p>
+            </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn btn-outline btn-sm" onClick={downloadVisitorsCsv} disabled={activeList.length === 0}>
                 <Printer size={14} /> Export CSV
@@ -212,48 +363,128 @@ export default function VisitorsPage() {
           {(['my', 'incoming'] as const).map((t) => {
             const label = t === 'my' ? `My Invitations (${myVisits.length})` : `Incoming (${incoming.length})`;
             return (
-              <button key={t} onClick={() => setTab(t)} style={{ padding: '10px 20px', fontWeight: 600, fontSize: '0.8125rem', border: 'none', background: 'none', cursor: 'pointer', marginBottom: -2, borderBottom: tab === t ? '2px solid var(--blue-700)' : '2px solid transparent', color: tab === t ? 'var(--blue-700)' : 'var(--slate-500)' }}>{label}</button>
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                style={{
+                  padding: '10px 20px',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  marginBottom: -2,
+                  borderBottom: tab === t ? '2px solid var(--blue-700)' : '2px solid transparent',
+                  color: tab === t ? 'var(--blue-700)' : 'var(--slate-500)'
+                }}
+              >
+                {label}
+              </button>
             );
           })}
         </div>
 
         <div className="card">
+          <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#3b82f6' }}>💡 Pro-Tip:</span> Double-click any visitor row to open their 2-sided digital pass badge (with download & print).
+          </div>
           {activeList.length === 0 ? (
-            <div className="empty-state"><Users size={36} /><h4>{tab === 'my' ? 'No Invitations Yet' : 'No Incoming Requests'}</h4>
+            <div className="empty-state">
+              <Users size={36} />
+              <h4>{tab === 'my' ? 'No Invitations Yet' : 'No Incoming Requests'}</h4>
               <p>{tab === 'my' ? 'Invite your first visitor.' : 'No one is trying to visit you right now.'}</p>
-              {tab === 'my' && <button className="btn btn-primary btn-sm" onClick={() => setShowInvite(true)}><UserPlus size={14} /> Invite Visitor</button>}
+              {tab === 'my' && (
+                <button className="btn btn-primary btn-sm" onClick={() => setShowInvite(true)}>
+                  <UserPlus size={14} /> Invite Visitor
+                </button>
+              )}
             </div>
           ) : (
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Visit ID</th><th>Visitor</th><th>Host</th><th>Purpose</th><th>Date</th><th>Time</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Visit ID</th>
+                    <th>Visitor</th>
+                    <th>Host</th>
+                    <th>Purpose</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {activeList.map((v: any) => {
                     const hEmp = v.hostUser?.employee;
                     const hostName = hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : v.hostUser?.email;
+                    const pass = v.visitorPass;
                     return (
-                      <tr key={v.id}>
+                      <tr
+                        key={v.id}
+                        onDoubleClick={() => setSelectedPassVisit(v)}
+                        style={{ cursor: 'pointer' }}
+                        title="Double click to open Digital Pass Modal"
+                      >
                         <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}>{v.visitId}</td>
-                        <td><div style={{ fontWeight: 600 }}>{v.visitor?.fullName}</div><div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{v.visitor?.mobile}</div>{v.visitor?.organization && <div style={{ fontSize: '0.7rem', color: 'var(--slate-400)' }}>{v.visitor.organization}</div>}</td>
-                        <td>{hostName}<br /><span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{v.department?.name || hEmp?.department?.name}</span></td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{v.visitor?.fullName}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>{v.visitor?.mobile}</div>
+                          {v.visitor?.organization && <div style={{ fontSize: '0.7rem', color: 'var(--slate-400)' }}>{v.visitor.organization}</div>}
+                        </td>
+                        <td>
+                          {hostName}<br />
+                          <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{v.department?.name || hEmp?.department?.name}</span>
+                        </td>
                         <td>{v.purpose}</td>
                         <td>{fmtDate(v.visitDate)}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{v.expectedEntryTime} – {v.expectedExitTime}</td>
-                        <td><span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span>{v.visitType === 'WALK_IN' && <span className="badge badge-slate" style={{ marginLeft: 4, fontSize: '0.65rem' }}>Walk-in</span>}</td>
                         <td>
-                          {['PENDING_HOST', 'WAITING'].includes(v.status) && (
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button className="btn btn-sm" style={{ background: 'var(--green-600)', color: 'white', padding: '3px 8px', fontSize: '0.75rem' }} onClick={() => respond(v.visitId, 'APPROVE')}><CheckCircle2 size={11} /> Approve</button>
-                              <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red-600)', padding: '3px 8px', fontSize: '0.75rem' }} onClick={() => respond(v.visitId, 'REJECT')}><XCircle size={11} /> Reject</button>
-                            </div>
-                          )}
-                          {v.status === 'APPROVED' && v.visitorPass && (
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--green-700)', fontWeight: 600 }}>✓ {v.visitorPass.passNumber}</span>
+                          <span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span>
+                          {v.visitType === 'WALK_IN' && <span className="badge badge-slate" style={{ marginLeft: 4, fontSize: '0.65rem' }}>Walk-in</span>}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                            {['PENDING_HOST', 'WAITING'].includes(v.status) && (
+                              <>
+                                <button className="btn btn-sm" style={{ background: 'var(--green-600)', color: 'white', padding: '3px 8px', fontSize: '0.75rem' }} onClick={(e) => { e.stopPropagation(); respond(v.visitId, 'APPROVE'); }}>
+                                  <CheckCircle2 size={11} /> Approve
+                                </button>
+                                <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red-600)', padding: '3px 8px', fontSize: '0.75rem' }} onClick={(e) => { e.stopPropagation(); respond(v.visitId, 'REJECT'); }}>
+                                  <XCircle size={11} /> Reject
+                                </button>
+                              </>
+                            )}
+
+                            {/* Meeting In Progress -> Host can clear for exit */}
+                            {v.status === 'CHECKED_IN' && (
                               <button
-                                onClick={() => {
-                                  const passUrl = `${window.location.origin}/visitor-pass/${v.visitorPass.qrToken}`;
-                                  const msg = encodeURIComponent(`Hello ${v.visitor?.fullName}!\nHere is your Visitor Entry Pass for SmartGate Campus:\nPass Number: ${v.visitorPass.passNumber}\nHost: ${hostName}\nView Pass & QR Code:\n${passUrl}\nPlease show this at Security.`);
+                                className="btn btn-sm"
+                                style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '3px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                onClick={(e) => { e.stopPropagation(); handleHostCheckout(v.visitId || v.id); }}
+                                title="End meeting and authorize visitor to exit through security gate"
+                              >
+                                <LogOut size={11} /> End Meeting & Clear Exit
+                              </button>
+                            )}
+
+                            {/* Open 2-Sided Pass Modal */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedPassVisit(v); }}
+                              className="btn btn-sm btn-outline"
+                              style={{ padding: '3px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              title="Open Pass Badge"
+                            >
+                              <QrCode size={11} /> Pass
+                            </button>
+
+                            {/* Direct WhatsApp Share */}
+                            {pass && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const passUrl = `${window.location.origin}/visitor-pass/${pass.qrToken}`;
+                                  const msg = encodeURIComponent(`Hello ${v.visitor?.fullName}!\nHere is your Visitor Entry Pass for SmartGate Campus:\nPass Number: ${pass.passNumber}\nHost: ${hostName}\nView Pass & QR Code:\n${passUrl}\nPlease show this at Security.`);
                                   const cleanPhone = (v.visitor?.mobile || '').replace(/[^0-9]/g, '');
                                   window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}`, '_blank');
                                 }}
@@ -263,17 +494,8 @@ export default function VisitorsPage() {
                               >
                                 <MessageCircle size={11} /> WhatsApp
                               </button>
-                              <Link
-                                href={`/visitor-pass/${v.visitorPass.qrToken}`}
-                                target="_blank"
-                                className="btn btn-sm btn-outline"
-                                style={{ padding: '3px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                title="Open Digital QR Pass"
-                              >
-                                <QrCode size={11} /> Pass
-                              </Link>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -284,8 +506,10 @@ export default function VisitorsPage() {
           )}
         </div>
       </div>
+
       <InviteModal open={showInvite} onClose={() => setShowInvite(false)} onSuccess={() => { setShowInvite(false); load(); }} />
       <GateQrPosterModal open={showQrPoster} onClose={() => setShowQrPoster(false)} />
+      <DigitalPassModal visit={selectedPassVisit} open={!!selectedPassVisit} onClose={() => setSelectedPassVisit(null)} />
     </AppLayout>
   );
 }

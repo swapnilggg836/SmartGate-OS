@@ -202,6 +202,8 @@ router.get('/pass/:token', async (req: Request, res: Response) => {
             visitor: true,
             hostUser: { select: { email: true, employee: { select: { firstName: true, lastName: true, designation: true, department: { select: { name: true } } } } } },
             department: { select: { name: true } },
+            checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
+            checkOuts: { orderBy: { createdAt: 'desc' }, take: 1 },
           },
         },
       },
@@ -224,9 +226,123 @@ router.get('/pass/:token', async (req: Request, res: Response) => {
         vehicleNumber: pass.visit.vehicleNumber || null,
         idType: pass.visit.visitor.idType || null,
         mobile: pass.visit.visitor.mobile,
+        actualEntryTime: pass.visit.checkIns?.[0]?.actualEntryTime || null,
+        actualExitTime: pass.visit.checkOuts?.[0]?.actualExitTime || null,
       },
     });
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch visitor pass.' }); }
+});
+
+// ?? Public: Invited visitor accepts or declines invitation directly
+router.patch('/pass/:token/respond', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const { action, reason } = req.body;
+
+    if (!['ACCEPT', 'DECLINE'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Action must be ACCEPT or DECLINE.' });
+    }
+
+    const pass = await prisma.visitorPass.findUnique({
+      where: { qrToken: token },
+      include: {
+        visit: {
+          include: {
+            visitor: true,
+            hostUser: { include: { employee: true } }
+          }
+        }
+      }
+    });
+
+    if (!pass) return res.status(404).json({ success: false, message: 'Visitor pass not found.' });
+
+    const visit = pass.visit;
+    const hostName = visit.hostUser?.employee ? `${visit.hostUser.employee.firstName} ${visit.hostUser.employee.lastName}` : visit.hostUser?.email || 'Host';
+
+    if (action === 'ACCEPT') {
+      await prisma.$transaction(async (tx) => {
+        await tx.visitorVisit.update({
+          where: { id: visit.id },
+          data: { status: 'APPROVED' }
+        });
+        await tx.visitorPass.update({
+          where: { id: pass.id },
+          data: { status: 'ACTIVE' }
+        });
+        await tx.visitorAuditLog.create({
+          data: {
+            visitId: visit.id,
+            action: 'VISITOR_ACCEPTED_INVITE',
+            details: 'Visitor confirmed & accepted invitation via digital pass.',
+            ipAddress: req.ip || null
+          }
+        });
+      });
+
+      // Notify Host
+      await prisma.notification.create({
+        data: {
+          userId: visit.hostUserId,
+          title: 'Invitation Confirmed',
+          message: `${visit.visitor.fullName} has accepted and confirmed their visit on ${new Date(visit.visitDate).toLocaleDateString()}.`,
+          type: 'INFO',
+          metadata: JSON.stringify({ visitId: visit.visitId })
+        }
+      });
+      emitToUser(visit.hostUserId, 'visitor:invite_accepted', { visitId: visit.visitId, visitorName: visit.visitor.fullName });
+
+      return res.json({
+        success: true,
+        message: 'Invitation accepted successfully. Your pass is ready for gate entry.',
+        status: 'APPROVED'
+      });
+    } else {
+      // DECLINE
+      await prisma.$transaction(async (tx) => {
+        await tx.visitorVisit.update({
+          where: { id: visit.id },
+          data: {
+            status: 'CANCELLED',
+            rejectionReason: reason || 'Declined by visitor'
+          }
+        });
+        await tx.visitorPass.update({
+          where: { id: pass.id },
+          data: { status: 'CANCELLED' }
+        });
+        await tx.visitorAuditLog.create({
+          data: {
+            visitId: visit.id,
+            action: 'VISITOR_DECLINED_INVITE',
+            details: `Visitor declined invitation. Reason: ${reason || 'Not specified'}`,
+            ipAddress: req.ip || null
+          }
+        });
+      });
+
+      // Notify Host
+      await prisma.notification.create({
+        data: {
+          userId: visit.hostUserId,
+          title: 'Invitation Declined',
+          message: `${visit.visitor.fullName} declined your invitation. Reason: ${reason || 'Not specified'}`,
+          type: 'WARNING',
+          metadata: JSON.stringify({ visitId: visit.visitId })
+        }
+      });
+      emitToUser(visit.hostUserId, 'visitor:invite_declined', { visitId: visit.visitId, visitorName: visit.visitor.fullName, reason });
+
+      return res.json({
+        success: true,
+        message: 'Invitation declined.',
+        status: 'CANCELLED'
+      });
+    }
+  } catch (err: any) {
+    console.error('Visitor respond error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process response.' });
+  }
 });
 
 // ?? Public: List active hosts for gate self-registration (no auth) ??????????
@@ -543,8 +659,9 @@ router.post('/invite', authenticate, validateBody(inviteSchema), async (req: Aut
       }
     }
 
+    let pass: any = null;
     if (isSelfHost) {
-      await issueVisitorPass(visit.id);
+      pass = await issueVisitorPass(visit.id);
     } else {
       await prisma.notification.create({
         data: {
@@ -556,8 +673,27 @@ router.post('/invite', authenticate, validateBody(inviteSchema), async (req: Aut
       emitToUser(hostUserId, 'visitor:new_invite', { visitId, visitorName: fullName, purpose, visitDate, expectedEntryTime });
     }
 
+    const hostEmp = (visit.hostUser as any)?.employee;
+    const hostName = hostEmp ? `${hostEmp.firstName} ${hostEmp.lastName}` : (visit.hostUser as any)?.email || 'Host';
+    const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host') || 'localhost:3000'}`;
+    const passUrl = pass ? `${frontendUrl}/visitor-pass/${pass.qrToken}` : `${frontendUrl}/visitor-register`;
+    const cleanPhone = (mobile || '').replace(/[^0-9]/g, '');
+    const msg = encodeURIComponent(
+      `Hello ${fullName}!\nYou have been invited to visit SmartGate Campus by ${hostName}.\n` +
+      (pass ? `Pass Number: ${pass.passNumber}\n` : '') +
+      `Date: ${new Date(visitDate).toLocaleDateString('en-IN')}\nTime: ${expectedEntryTime} - ${expectedExitTime}\n` +
+      `View your Digital Gate Pass & QR Code:\n${passUrl}\n\nPlease show this QR at Security on arrival.`
+    );
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}`;
+
     await logAudit({ userId, action: 'VISITOR_INVITE_CREATED', entity: 'VisitorVisit', entityId: visit.id, newValues: { visitId, visitorName: fullName, hostUserId, purpose }, req });
-    return res.status(201).json({ success: true, data: visit });
+    return res.status(201).json({
+      success: true,
+      data: visit,
+      pass,
+      passUrl,
+      whatsappUrl,
+    });
   } catch (err: any) {
     console.error('Invite visitor error:', err);
     return res.status(500).json({ success: false, message: 'Failed to create visitor invitation.' });
@@ -747,7 +883,7 @@ router.get('/stats', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.H
     const [total, todayCount, inside, waiting, completed, rejected, cancelled, expired, overdue] = await Promise.all([
       prisma.visitorVisit.count(),
       prisma.visitorVisit.count({ where: { visitDate: { gte: today, lt: tomorrow } } }),
-      prisma.visitorVisit.count({ where: { status: 'CHECKED_IN' } }),
+      prisma.visitorVisit.count({ where: { status: { in: ['CHECKED_IN', 'CLEARED_FOR_EXIT'] } } }),
       prisma.visitorVisit.count({ where: { status: 'WAITING' } }),
       prisma.visitorVisit.count({ where: { status: { in: ['COMPLETED', 'CHECKED_OUT'] } } }),
       prisma.visitorVisit.count({ where: { status: 'REJECTED' } }),
@@ -763,7 +899,7 @@ router.get('/stats', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.H
 router.get('/emergency', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR, UserRole.GM, UserRole.SECURITY_GUARD), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const visits = await prisma.visitorVisit.findMany({
-      where: { status: { in: ['CHECKED_IN', 'OVERDUE'] } },
+      where: { status: { in: ['CHECKED_IN', 'CLEARED_FOR_EXIT', 'OVERDUE'] } },
       include: { visitor: true, hostUser: { select: { email: true, employee: { select: { firstName: true, lastName: true } } } }, department: { select: { name: true } }, checkIns: { orderBy: { createdAt: 'desc' }, take: 1 } },
       orderBy: { updatedAt: 'asc' },
     });
@@ -834,6 +970,70 @@ router.patch('/:visitId/respond', authenticate, validateBody(respondSchema), asy
   }
 });
 
+// ?? PATCH /api/visitors/:visitId/host-checkout - Host concludes meeting and clears visitor for exit
+router.patch('/:visitId/host-checkout', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { visitId } = req.params;
+    const { notes } = req.body || {};
+
+    const visit = await prisma.visitorVisit.findFirst({
+      where: { OR: [{ visitId }, { id: visitId }] },
+      include: { visitor: true, visitorPass: true, hostUser: { include: { employee: true } } }
+    });
+    if (!visit) return res.status(404).json({ success: false, message: 'Visit not found.' });
+
+    const canClear = visit.hostUserId === userId || ['SUPER_ADMIN', 'HR'].includes(req.user!.role);
+    if (!canClear) return res.status(403).json({ success: false, message: 'Only the host or HR/Admin can authorize meeting exit clearance.' });
+
+    if (!['CHECKED_IN', 'OVERDUE'].includes(visit.status)) {
+      return res.status(400).json({ success: false, message: `Cannot clear exit for visit with status ${visit.status}. Visitor must be currently checked in.` });
+    }
+
+    const hostName = visit.hostUser?.employee ? `${visit.hostUser.employee.firstName} ${visit.hostUser.employee.lastName}` : visit.hostUser?.email || 'Host';
+
+    await prisma.$transaction(async (tx) => {
+      await tx.visitorVisit.update({
+        where: { id: visit.id },
+        data: {
+          status: 'CLEARED_FOR_EXIT',
+          hostNotes: notes ? (visit.hostNotes ? `${visit.hostNotes} | Exit: ${notes}` : notes) : visit.hostNotes,
+        }
+      });
+      await tx.visitorAuditLog.create({
+        data: {
+          visitId: visit.id,
+          userId,
+          action: 'HOST_CLEARED_EXIT',
+          details: `Meeting completed by host ${hostName}. Cleared for gate exit. Notes: ${notes || 'None'}`,
+          ipAddress: req.ip || null
+        }
+      });
+    });
+
+    // Alert Security Guard and Host
+    emitToRole(UserRole.SECURITY_GUARD, 'visitor:cleared_for_exit', {
+      visitId: visit.visitId,
+      visitorName: visit.visitor.fullName,
+      hostName,
+      status: 'CLEARED_FOR_EXIT'
+    });
+    emitToUser(visit.hostUserId, 'visitor:cleared_for_exit', {
+      visitId: visit.visitId,
+      status: 'CLEARED_FOR_EXIT'
+    });
+
+    return res.json({
+      success: true,
+      message: 'Meeting marked as completed. Visitor is cleared for exit.',
+      status: 'CLEARED_FOR_EXIT'
+    });
+  } catch (err: any) {
+    console.error('Host checkout error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to complete host checkout.' });
+  }
+});
+
 // ?? PATCH /api/visitors/:visitId/cancel ???????????????????????????????????????
 router.patch('/:visitId/cancel', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -846,7 +1046,7 @@ router.patch('/:visitId/cancel', authenticate, async (req: AuthenticatedRequest,
 
     const canCancel = visit.createdByUserId === userId || visit.hostUserId === userId || ['SUPER_ADMIN', 'HR'].includes(req.user!.role);
     if (!canCancel) return res.status(403).json({ success: false, message: 'Not authorized to cancel.' });
-    if (['CHECKED_IN', 'CHECKED_OUT', 'COMPLETED'].includes(visit.status)) return res.status(400).json({ success: false, message: `Cannot cancel a ${visit.status} visit.` });
+    if (['CHECKED_IN', 'CLEARED_FOR_EXIT', 'CHECKED_OUT', 'COMPLETED'].includes(visit.status)) return res.status(400).json({ success: false, message: `Cannot cancel a ${visit.status} visit.` });
 
     await prisma.$transaction(async (tx) => {
       await tx.visitorVisit.update({ where: { id: visit.id }, data: { status: 'CANCELLED', rejectionReason: reason || null } });
@@ -912,7 +1112,7 @@ router.get('/security/today', authenticate, requireRoles(UserRole.SECURITY_GUARD
 // GET /api/visitors/security/inside
 router.get('/security/inside', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const visits = await prisma.visitorVisit.findMany({ where: { status: { in: ['CHECKED_IN', 'OVERDUE'] } }, include: VISIT_INCLUDE, orderBy: { updatedAt: 'asc' } });
+    const visits = await prisma.visitorVisit.findMany({ where: { status: { in: ['CHECKED_IN', 'CLEARED_FOR_EXIT', 'OVERDUE'] } }, include: VISIT_INCLUDE, orderBy: { updatedAt: 'asc' } });
     return res.json({ success: true, data: visits });
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch visitors inside.' }); }
 });
@@ -949,7 +1149,7 @@ router.post('/security/check-out/:visitId', authenticate, requireRoles(UserRole.
     const { gate, notes } = req.body;
     const visit = await prisma.visitorVisit.findFirst({ where: { OR: [{ visitId }, { id: visitId }] }, include: { visitor: true, visitorPass: true, hostUser: { select: { id: true } } } });
     if (!visit) return res.status(404).json({ success: false, message: 'Visit not found.' });
-    if (!['CHECKED_IN', 'OVERDUE'].includes(visit.status)) return res.status(400).json({ success: false, message: `Visitor is not checked in. Status: ${visit.status}` });
+    if (!['CHECKED_IN', 'CLEARED_FOR_EXIT', 'OVERDUE'].includes(visit.status)) return res.status(400).json({ success: false, message: `Visitor is not checked in. Status: ${visit.status}` });
     const now = new Date();
     await prisma.$transaction(async (tx) => {
       await tx.visitorVisit.update({ where: { id: visit.id }, data: { status: 'COMPLETED' } });

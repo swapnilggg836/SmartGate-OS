@@ -6,9 +6,14 @@ import { fmtDate, fmtTime, statusBadgeClass, statusLabel } from '@/lib/utils';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
-import { Shield, Search, CheckCircle2, XCircle, Clock, AlertTriangle, Users, UserPlus, LogIn, LogOut, QrCode, RefreshCw, MessageCircle, Camera, Printer } from 'lucide-react';
+import {
+  Shield, Search, CheckCircle2, XCircle, Clock, AlertTriangle, Users,
+  UserPlus, LogIn, LogOut, QrCode, RefreshCw, MessageCircle, Camera, Printer,
+  Check
+} from 'lucide-react';
 import { QRScannerModal } from '@/components/qr/QRScannerModal';
 import { QRCodeSVG } from 'qrcode.react';
+import { DigitalPassModal } from '@/components/visitors/DigitalPassModal';
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -36,8 +41,12 @@ function WalkInModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
   useEffect(() => {
     if (hostQ.length < 2) { setHostResults([]); return; }
     const t = setTimeout(async () => {
-      try { const r = await api.get(`/visitors/search-host?q=${encodeURIComponent(hostQ)}`); setHostResults(r.data?.data || []); }
-      catch { setHostResults([]); }
+      try {
+        const r = await api.get(`/visitors/search-host?q=${encodeURIComponent(hostQ)}`);
+        setHostResults(r.data?.data || []);
+      } catch {
+        setHostResults([]);
+      }
     }, 350);
     return () => clearTimeout(t);
   }, [hostQ]);
@@ -94,8 +103,17 @@ function WalkInModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
   };
 
   return (
-    <Modal open={open} onClose={() => { stopCamera(); onClose(); }} title="Register Walk-in Visitor"
-      footer={<><button className="btn btn-ghost" onClick={() => { stopCamera(); onClose(); }}>Cancel</button><button className="btn btn-primary" form="walkin-form" type="submit" disabled={submitting}>{submitting && <Spinner white size="sm" />} Register</button></>}>
+    <Modal
+      open={open}
+      onClose={() => { stopCamera(); onClose(); }}
+      title="Register Walk-in Visitor"
+      footer={<>
+        <button className="btn btn-ghost" onClick={() => { stopCamera(); onClose(); }}>Cancel</button>
+        <button className="btn btn-primary" form="walkin-form" type="submit" disabled={submitting}>
+          {submitting && <Spinner white size="sm" />} Register
+        </button>
+      </>}
+    >
       <form id="walkin-form" onSubmit={submit} className="space-y-3">
         {error && <div className="alert alert-error"><AlertTriangle size={14} /><span>{error}</span></div>}
 
@@ -179,30 +197,58 @@ function CheckInModal({ visit, open, onClose, onSuccess }: { visit: any; open: b
 
   const submit = async () => {
     setSubmitting(true);
-    try { await api.post(`/visitors/security/check-in/${visit.visitId}`, { idVerified, gate, notes }); onSuccess(); }
-    catch (err: any) { alert(err.response?.data?.message || 'Failed'); }
-    finally { setSubmitting(false); }
+    try {
+      await api.post(`/visitors/security/check-in/${visit.visitId || visit.id}`, { idVerified, gate, notes });
+      onSuccess();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!visit) return null;
   const hEmp = visit.hostUser?.employee;
+
   return (
-    <Modal open={open} onClose={onClose} title="Check-In Visitor"
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={submit} disabled={submitting}>{submitting && <Spinner white size="sm" />}<LogIn size={14} /> Confirm Check-In</button></>}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Check-In Visitor"
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit} disabled={submitting}>
+          {submitting && <Spinner white size="sm" />}
+          <LogIn size={14} /> Confirm Check-In
+        </button>
+      </>}
+    >
       <div className="space-y-3">
         <div style={{ background: 'var(--blue-50)', borderRadius: 10, padding: '14px 16px' }}>
           <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>{visit.visitor?.fullName}</div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', marginTop: 4 }}>{visit.visitor?.mobile}{visit.visitor?.organization ? ` · ${visit.visitor.organization}` : ''}</div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', marginTop: 2 }}>Meeting: {hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : visit.hostUser?.email}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', marginTop: 4 }}>
+            {visit.visitor?.mobile}{visit.visitor?.organization ? ` · ${visit.visitor.organization}` : ''}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', marginTop: 2 }}>
+            Meeting: {hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : visit.hostUser?.email}
+          </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)' }}>Purpose: {visit.purpose}</div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', fontFamily: 'monospace', marginTop: 4 }}>Expected exit: {visit.expectedExitTime}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', fontFamily: 'monospace', marginTop: 4 }}>
+            Expected exit: {visit.expectedExitTime}
+          </div>
         </div>
-        <div className="form-group"><label className="form-label">Gate / Entry Point</label><input className="form-control" value={gate} onChange={e => setGate(e.target.value)} placeholder="e.g. Main Gate, Gate A" /></div>
+        <div className="form-group">
+          <label className="form-label">Gate / Entry Point</label>
+          <input className="form-control" value={gate} onChange={e => setGate(e.target.value)} placeholder="e.g. Main Gate, Gate 1" />
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.875rem', padding: '10px 14px', border: '1px solid var(--slate-200)', borderRadius: 8, background: idVerified ? 'var(--green-50)' : '' }}>
           <input type="checkbox" checked={idVerified} onChange={e => setIdVerified(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#16a34a' }} />
-          <span style={{ fontWeight: 600, color: idVerified ? '#16a34a' : 'var(--slate-700)' }}>? ID Verified</span>
+          <span style={{ fontWeight: 600, color: idVerified ? '#16a34a' : 'var(--slate-700)' }}>✓ Physical ID Card Verified at Gate</span>
         </label>
-        <div className="form-group"><label className="form-label">Notes (optional)</label><textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} /></div>
+        <div className="form-group">
+          <label className="form-label">Notes (optional)</label>
+          <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
       </div>
     </Modal>
   );
@@ -221,14 +267,20 @@ export default function SecurityVisitorsPage() {
   const [actioning, setActioning] = useState<string | null>(null);
   const [showQrPoster, setShowQrPoster] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [selectedPassVisit, setSelectedPassVisit] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [todayRes, insideRes] = await Promise.all([api.get('/visitors/security/today'), api.get('/visitors/security/inside')]);
+      const [todayRes, insideRes] = await Promise.all([
+        api.get('/visitors/security/today'),
+        api.get('/visitors/security/inside')
+      ]);
       setTodayVisits(todayRes.data?.data || []);
       setInsideVisits(insideRes.data?.data || []);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -252,16 +304,28 @@ export default function SecurityVisitorsPage() {
     }
   };
 
-  const checkOut = async (visitId: string) => {
+  const checkOut = async (visitId: string, isCleared: boolean = true) => {
+    if (!isCleared) {
+      const proceed = confirm('Note: The host has not yet marked "Meeting Completed / Cleared for Exit". Do you wish to override and check out this visitor now?');
+      if (!proceed) return;
+    }
     setActioning(visitId);
-    try { await api.post(`/visitors/security/check-out/${visitId}`, {}); load(); setVerifyResult(null); }
-    catch (err: any) { alert(err.response?.data?.message || 'Failed'); }
-    finally { setActioning(null); }
+    try {
+      await api.post(`/visitors/security/check-out/${visitId}`, {});
+      load();
+      setVerifyResult(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to check out visitor');
+    } finally {
+      setActioning(null);
+    }
   };
 
   const approved = todayVisits.filter(v => v.status === 'APPROVED');
   const waiting = todayVisits.filter(v => v.status === 'WAITING');
   const pending = todayVisits.filter(v => v.status === 'PENDING_HOST');
+  const insideNow = insideVisits.filter(v => ['CHECKED_IN', 'CLEARED_FOR_EXIT'].includes(v.status));
+  const clearedExitCount = insideVisits.filter(v => v.status === 'CLEARED_FOR_EXIT').length;
 
   if (loading) return <AppLayout><PageLoader /></AppLayout>;
 
@@ -270,7 +334,10 @@ export default function SecurityVisitorsPage() {
       <div className="space-y-4">
         <div className="page-header">
           <div className="page-header-row">
-            <div><h1>Security · Visitor Console</h1><p style={{ marginTop: 2 }}>Today's visitor management, gate entry, and live QR verification</p></div>
+            <div>
+              <h1>Security · Visitor Gate Console</h1>
+              <p style={{ marginTop: 2 }}>Campus entry verification, QR badge scanning, and host exit clearance</p>
+            </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn btn-primary btn-sm" onClick={() => setShowScanner(true)}>
                 <Camera size={14} /> Scan Visitor QR
@@ -279,7 +346,9 @@ export default function SecurityVisitorsPage() {
                 <QrCode size={14} /> Gate QR Poster
               </button>
               <button className="btn btn-outline btn-sm" onClick={load}><RefreshCw size={14} /></button>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowWalkIn(true)}><UserPlus size={14} /> Register Walk-in</button>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowWalkIn(true)}>
+                <UserPlus size={14} /> Register Walk-in
+              </button>
             </div>
           </div>
         </div>
@@ -287,8 +356,9 @@ export default function SecurityVisitorsPage() {
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
           <StatCard label="Expected Today" value={approved.length} color="#2563eb" />
-          <StatCard label="Waiting" value={waiting.length + pending.length} color="#d97706" />
-          <StatCard label="Inside Now" value={insideVisits.filter(v => v.status === 'CHECKED_IN').length} color="#16a34a" />
+          <StatCard label="Waiting Approval" value={waiting.length + pending.length} color="#d97706" />
+          <StatCard label="Inside Campus" value={insideNow.length} color="#16a34a" />
+          <StatCard label="Host Cleared Exit" value={clearedExitCount} color="#8b5cf6" />
           <StatCard label="Overdue" value={insideVisits.filter(v => v.status === 'OVERDUE').length} color="#dc2626" />
         </div>
 
@@ -335,8 +405,17 @@ export default function SecurityVisitorsPage() {
                     if (!v) return null;
                     const hEmp = v.hostUser?.employee;
                     const photo = v.photoUrl || v.visitor?.photoUrl;
+                    const isCleared = v.status === 'CLEARED_FOR_EXIT';
+
                     return (
                       <div>
+                        {/* Status notification banner */}
+                        {isCleared && (
+                          <div style={{ background: '#f3e8ff', color: '#6b21a8', padding: '8px 12px', borderRadius: 8, border: '1px solid #d8b4fe', fontWeight: 700, fontSize: '0.82rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <CheckCircle2 size={16} color="#7c3aed" /> Meeting Complete: Host has authorized exit checkout!
+                          </div>
+                        )}
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             {photo ? (
@@ -375,16 +454,31 @@ export default function SecurityVisitorsPage() {
                           <div>Time: <strong style={{ fontFamily: 'monospace' }}>{v.expectedEntryTime} – {v.expectedExitTime}</strong></div>
                           {verifyResult.data?.passNumber && <div style={{ gridColumn: '1/-1' }}>Pass: <strong style={{ fontFamily: 'monospace' }}>{verifyResult.data.passNumber}</strong></div>}
                         </div>
-                        {['APPROVED', 'WAITING'].includes(v.status) && !verifyResult.warnings?.length && (
-                          <button className="btn btn-primary btn-sm" onClick={() => { setCheckInTarget(v); setVerifyResult(null); setVerifySearch(''); }}>
-                            <LogIn size={13} /> Proceed to Check-In
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {['APPROVED', 'WAITING'].includes(v.status) && !verifyResult.warnings?.length && (
+                            <button className="btn btn-primary btn-sm" onClick={() => { setCheckInTarget(v); setVerifyResult(null); setVerifySearch(''); }}>
+                              <LogIn size={13} /> Proceed to Check-In
+                            </button>
+                          )}
+                          {['CHECKED_IN', 'CLEARED_FOR_EXIT', 'OVERDUE'].includes(v.status) && (
+                            <button
+                              className="btn btn-sm"
+                              style={{ background: isCleared ? '#16a34a' : '#ea580c', color: 'white' }}
+                              onClick={() => checkOut(v.visitId || v.id, isCleared)}
+                              disabled={actioning === (v.visitId || v.id)}
+                            >
+                              {actioning === (v.visitId || v.id) ? <Spinner white size="sm" /> : <LogOut size={13} />}
+                              {isCleared ? 'Complete Host-Cleared Exit' : 'Check Out Visitor'}
+                            </button>
+                          )}
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setSelectedPassVisit(v)}
+                          >
+                            <QrCode size={13} /> View Pass Badge
                           </button>
-                        )}
-                        {['CHECKED_IN', 'OVERDUE'].includes(v.status) && (
-                          <button className="btn btn-sm" style={{ background: '#ea580c', color: 'white' }} onClick={() => checkOut(v.visitId)} disabled={actioning === v.visitId}>
-                            {actioning === v.visitId ? <Spinner white size="sm" /> : <LogOut size={13} />} Check Out
-                          </button>
-                        )}
+                        </div>
                       </div>
                     );
                   })()}
@@ -399,26 +493,65 @@ export default function SecurityVisitorsPage() {
           {(['today', 'inside'] as const).map((t) => {
             const label = t === 'today' ? `Today's Visitors (${todayVisits.length})` : `Inside Now (${insideVisits.length})`;
             return (
-              <button key={t} onClick={() => setTab(t)} style={{ padding: '10px 20px', fontWeight: 600, fontSize: '0.8125rem', border: 'none', background: 'none', cursor: 'pointer', marginBottom: -2, borderBottom: tab === t ? '2px solid var(--blue-700)' : '2px solid transparent', color: tab === t ? 'var(--blue-700)' : 'var(--slate-500)' }}>{label}</button>
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                style={{
+                  padding: '10px 20px',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  marginBottom: -2,
+                  borderBottom: tab === t ? '2px solid var(--blue-700)' : '2px solid transparent',
+                  color: tab === t ? 'var(--blue-700)' : 'var(--slate-500)'
+                }}
+              >
+                {label}
+              </button>
             );
           })}
         </div>
 
         <div className="card">
+          <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.78rem', color: '#64748b' }}>
+            <span style={{ fontWeight: 700, color: '#3b82f6' }}>💡 Pro-Tip:</span> Double-click any visitor row to open their 2-sided digital pass badge (with download & print).
+          </div>
           {(() => {
             const list = tab === 'today' ? todayVisits : insideVisits;
             if (list.length === 0) return <div className="empty-state"><Users size={36} /><h4>{tab === 'today' ? 'No visitors expected today' : 'No visitors inside'}</h4></div>;
             return (
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Visit ID</th><th>Visitor</th><th>Host</th><th>Purpose</th><th>Time</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Visit ID</th>
+                      <th>Visitor</th>
+                      <th>Host</th>
+                      <th>Purpose</th>
+                      <th>Time</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {list.map((v: any) => {
                       const hEmp = v.hostUser?.employee;
                       const checkIn = v.checkIns?.[0];
                       const photo = v.photoUrl || v.visitor?.photoUrl;
+                      const isCleared = v.status === 'CLEARED_FOR_EXIT';
+
                       return (
-                        <tr key={v.id} style={v.status === 'OVERDUE' ? { background: '#fff7ed' } : {}}>
+                        <tr
+                          key={v.id}
+                          onDoubleClick={() => setSelectedPassVisit(v)}
+                          style={{
+                            cursor: 'pointer',
+                            background: isCleared ? '#fbf7ff' : (v.status === 'OVERDUE' ? '#fff7ed' : undefined)
+                          }}
+                          title="Double-click to open Digital Pass Badge"
+                        >
                           <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}>{v.visitId}</td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -458,17 +591,37 @@ export default function SecurityVisitorsPage() {
                             {v.expectedEntryTime} – {v.expectedExitTime}
                             {checkIn && <div style={{ fontSize: '0.7rem', color: 'var(--green-700)', marginTop: 2 }}>In: {fmtTime(checkIn.actualEntryTime)}</div>}
                           </td>
-                          <td><span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span></td>
+                          <td>
+                            <span className={`badge ${statusBadgeClass(v.status)}`}>
+                              {isCleared ? 'Exit Cleared by Host' : statusLabel(v.status)}
+                            </span>
+                          </td>
                           <td>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                               {['APPROVED', 'WAITING'].includes(v.status) && (
-                                <button className="btn btn-sm" style={{ background: '#16a34a', color: 'white', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setCheckInTarget(v)}>
+                                <button
+                                  className="btn btn-sm"
+                                  style={{ background: '#16a34a', color: 'white', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                  onClick={(e) => { e.stopPropagation(); setCheckInTarget(v); }}
+                                >
                                   <LogIn size={11} /> Check In
                                 </button>
                               )}
+
+                              {/* Pass badge view */}
+                              <button
+                                className="btn btn-sm btn-outline"
+                                style={{ padding: '3px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                onClick={(e) => { e.stopPropagation(); setSelectedPassVisit(v); }}
+                                title="Open digital pass badge"
+                              >
+                                <QrCode size={11} /> Pass
+                              </button>
+
                               {v.visitorPass && (
                                 <button
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     const passUrl = `${window.location.origin}/visitor-pass/${v.visitorPass.qrToken}`;
                                     const msg = encodeURIComponent(`Hello ${v.visitor?.fullName}!\nHere is your Visitor Entry Pass for SmartGate Campus:\nPass Number: ${v.visitorPass.passNumber}\nView Pass & QR Code:\n${passUrl}\nPlease show this at Security.`);
                                     const cleanPhone = (v.visitor?.mobile || '').replace(/[^0-9]/g, '');
@@ -481,9 +634,20 @@ export default function SecurityVisitorsPage() {
                                   <MessageCircle size={11} /> WhatsApp
                                 </button>
                               )}
-                              {['CHECKED_IN', 'OVERDUE'].includes(v.status) && (
-                                <button className="btn btn-sm btn-outline" style={{ fontSize: '0.75rem' }} onClick={() => checkOut(v.visitId)} disabled={actioning === v.visitId}>
-                                  {actioning === v.visitId ? <Spinner size="sm" /> : <LogOut size={11} />} Check Out
+
+                              {['CHECKED_IN', 'CLEARED_FOR_EXIT', 'OVERDUE'].includes(v.status) && (
+                                <button
+                                  className="btn btn-sm"
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    background: isCleared ? '#7c3aed' : undefined,
+                                    color: isCleared ? 'white' : undefined
+                                  }}
+                                  onClick={(e) => { e.stopPropagation(); checkOut(v.visitId || v.id, isCleared); }}
+                                  disabled={actioning === (v.visitId || v.id)}
+                                >
+                                  {actioning === (v.visitId || v.id) ? <Spinner size="sm" /> : <LogOut size={11} />}
+                                  {isCleared ? 'Exit Cleared' : 'Check Out'}
                                 </button>
                               )}
                             </div>
@@ -509,6 +673,7 @@ export default function SecurityVisitorsPage() {
           verify(decodedText);
         }}
       />
+      <DigitalPassModal visit={selectedPassVisit} open={!!selectedPassVisit} onClose={() => setSelectedPassVisit(null)} />
     </AppLayout>
   );
 }
