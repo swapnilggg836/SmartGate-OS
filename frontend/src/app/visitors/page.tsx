@@ -359,40 +359,76 @@ export default function VisitorsPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--blue-100)' }}>
-          {(['my', 'incoming'] as const).map((t) => {
-            const label = t === 'my' ? `My Invitations (${myVisits.length})` : `Incoming (${incoming.length})`;
-            return (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                style={{
-                  padding: '10px 20px',
-                  fontWeight: 600,
-                  fontSize: '0.8125rem',
-                  border: 'none',
-                  background: 'none',
-                  cursor: 'pointer',
-                  marginBottom: -2,
-                  borderBottom: tab === t ? '2px solid var(--blue-700)' : '2px solid transparent',
-                  color: tab === t ? 'var(--blue-700)' : 'var(--slate-500)'
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '2px solid var(--blue-100)', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setTab('my')}
+            style={{
+              padding: '10px 18px',
+              fontWeight: 600,
+              fontSize: '0.8125rem',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              marginBottom: -2,
+              borderBottom: tab === 'my' ? '2px solid var(--blue-700)' : '2px solid transparent',
+              color: tab === 'my' ? 'var(--blue-700)' : 'var(--slate-500)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <UserPlus size={15} />
+            <span>My Invitations ({myVisits.length})</span>
+          </button>
+
+          <button
+            onClick={() => setTab('incoming')}
+            style={{
+              padding: '10px 18px',
+              fontWeight: 600,
+              fontSize: '0.8125rem',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              marginBottom: -2,
+              borderBottom: tab === 'incoming' ? '2px solid var(--blue-700)' : '2px solid transparent',
+              color: tab === 'incoming' ? 'var(--blue-700)' : 'var(--slate-500)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <Users size={15} />
+            <span>Incoming ({incoming.length})</span>
+            {pendingCount > 0 && (
+              <span style={{
+                background: '#ef4444', color: 'white', fontSize: '0.65rem',
+                fontWeight: 700, padding: '1px 6px', borderRadius: 999
+              }}>
+                {pendingCount} new
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="card">
-          <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 700, color: '#3b82f6' }}>💡 Pro-Tip:</span> Double-click any visitor row to open their 2-sided digital pass badge (with download & print).
+          <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontWeight: 700, color: '#3b82f6' }}>💡 Pro-Tip:</span> Double-click any visitor row to open their 2-sided digital pass badge (with download & print).
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+              {tab === 'my' ? 'Showing pre-registered invitations you created' : 'Showing gate walk-in arrivals & visitors requesting to meet you'}
+            </div>
           </div>
           {activeList.length === 0 ? (
             <div className="empty-state">
-              <Users size={36} />
-              <h4>{tab === 'my' ? 'No Invitations Yet' : 'No Incoming Requests'}</h4>
-              <p>{tab === 'my' ? 'Invite your first visitor.' : 'No one is trying to visit you right now.'}</p>
+              {tab === 'my' ? <UserPlus size={36} /> : <Users size={36} />}
+              <h4>{tab === 'my' ? 'No Invitations Sent Yet' : 'No Incoming Gate Requests'}</h4>
+              <p>
+                {tab === 'my'
+                  ? 'You have not scheduled any visitor invitations. Click "Invite Visitor" to create a pass and share it with your guest.'
+                  : 'No walk-in visitors or gate requests are currently waiting to meet you.'}
+              </p>
               {tab === 'my' && (
                 <button className="btn btn-primary btn-sm" onClick={() => setShowInvite(true)}>
                   <UserPlus size={14} /> Invite Visitor

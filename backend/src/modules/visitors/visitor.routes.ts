@@ -847,12 +847,15 @@ router.get('/security/today', authenticate, async (req: AuthenticatedRequest, re
   }
 });
 
-// GET /api/visitors/my-visits
+// GET /api/visitors/my-visits — Invitations created & sent by this user
 router.get('/my-visits', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
     const { status, date } = req.query;
-    const where: any = { createdByUserId: userId };
+    const where: any = {
+      createdByUserId: userId,
+      visitType: 'PRE_REGISTERED',
+    };
     if (status) where.status = String(status);
     if (date) {
       const d = new Date(String(date)); const d2 = new Date(d); d2.setDate(d.getDate() + 1);
@@ -863,12 +866,18 @@ router.get('/my-visits', authenticate, async (req: AuthenticatedRequest, res: Re
   } catch (err) { return res.status(500).json({ success: false, message: 'Failed to fetch your visits.' }); }
 });
 
-// ?? GET /api/visitors/incoming ????????????????????????????????????????????????
+// GET /api/visitors/incoming — Incoming visits to this host (Walk-ins who arrived on their own, or scheduled by another staff)
 router.get('/incoming', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
     const { status } = req.query;
-    const where: any = { hostUserId: userId };
+    const where: any = {
+      hostUserId: userId,
+      OR: [
+        { visitType: 'WALK_IN' },
+        { createdByUserId: { not: userId } },
+      ],
+    };
     if (status) where.status = String(status);
     const visits = await prisma.visitorVisit.findMany({ where, include: VISIT_INCLUDE, orderBy: { createdAt: 'desc' } });
     return res.json({ success: true, data: visits });
