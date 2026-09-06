@@ -56,4 +56,44 @@ router.patch('/read-all', authenticate, async (req: AuthenticatedRequest, res: R
   }
 });
 
+// GET /api/notifications/unread-count
+router.get('/unread-count', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const count = await prisma.notification.count({
+      where: { userId, read: false }
+    });
+    return res.json({ success: true, count });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to count notifications' });
+  }
+});
+
+// DELETE /api/notifications/clear-read
+router.delete('/clear-read', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const result = await prisma.notification.deleteMany({
+      where: { userId, read: true }
+    });
+    return res.json({ success: true, message: 'Read notifications cleared', count: result.count });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to clear read notifications' });
+  }
+});
+
+// DELETE /api/notifications/:id
+router.delete('/:id', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user!.userId;
+    await prisma.notification.deleteMany({
+      where: { id, userId }
+    });
+    return res.json({ success: true, message: 'Notification deleted' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to delete notification' });
+  }
+});
+
 export default router;
