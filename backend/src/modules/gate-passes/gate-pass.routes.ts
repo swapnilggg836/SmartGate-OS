@@ -130,9 +130,13 @@ router.get('/today', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRol
 // GET /api/gate-passes/my-active (Employee)
 router.get('/my-active', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const employeeId = req.user!.employeeId;
+    let employeeId = req.user!.employeeId;
     if (!employeeId) {
-      return res.status(400).json({ success: false, message: 'No employee record linked.' });
+      const emp = await prisma.employee.findFirst({ where: { userId: req.user!.userId } });
+      if (emp) employeeId = emp.id;
+    }
+    if (!employeeId) {
+      return res.json({ success: true, data: null });
     }
 
     const activePass = await prisma.gatePass.findFirst({
@@ -168,9 +172,13 @@ router.get('/my-active', authenticate, async (req: AuthenticatedRequest, res: Re
 // GET /api/gate-passes/my-passes (Employee — all their passes)
 router.get('/my-passes', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const employeeId = req.user!.employeeId;
+    let employeeId = req.user!.employeeId;
     if (!employeeId) {
-      return res.status(400).json({ success: false, message: 'No employee record linked.' });
+      const emp = await prisma.employee.findFirst({ where: { userId: req.user!.userId } });
+      if (emp) employeeId = emp.id;
+    }
+    if (!employeeId) {
+      return res.json({ success: true, data: [] });
     }
     const passes = await prisma.gatePass.findMany({
       where: { employeeId },

@@ -147,7 +147,7 @@ async function issueGatePass(exitRequestId: string, tx?: any) {
 // GET /api/exit-requests
 router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { status, employeeId, date, startDate, endDate, departmentId } = req.query;
+    const { status, employeeId, date, startDate, endDate, departmentId, mine } = req.query;
     const role = req.user!.role;
     const userEmployeeId = req.user!.employeeId;
     const userId = req.user!.userId;
@@ -158,7 +158,14 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
       where.status = String(status);
     }
 
-    if (role === UserRole.EMPLOYEE) {
+    if (mine === 'true') {
+      let myEmpId = userEmployeeId;
+      if (!myEmpId) {
+        const emp = await prisma.employee.findFirst({ where: { userId } });
+        if (emp) myEmpId = emp.id;
+      }
+      where.employeeId = myEmpId || 'no-emp';
+    } else if (role === UserRole.EMPLOYEE) {
       where.employeeId = userEmployeeId;
     } else if (role === UserRole.MANAGER) {
       const juniors = await prisma.authorityConnection.findMany({
@@ -229,6 +236,52 @@ router.get('/', authenticate, async (req: AuthenticatedRequest, res: Response) =
     return res.json({ success: true, data: requests });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to fetch exit requests' });
+  }
+});
+
+// GET /api/exit-requests/my (User's own personal exit requests)
+router.get('/my', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    let employeeId = req.user!.employeeId;
+    if (!employeeId) {
+      const emp = await prisma.employee.findFirst({ where: { userId } });
+      if (emp) employeeId = emp.id;
+    }
+
+    if (!employeeId) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const requests = await prisma.exitRequest.findMany({
+      where: { employeeId },
+      include: {
+        employee: {
+          include: {
+            department: true,
+            user: { select: { email: true } }
+          }
+        },
+        gatePass: {
+          include: {
+            gateLogs: true
+          }
+        },
+        approvals: {
+          include: {
+            approver: {
+              include: { employee: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return res.json({ success: true, data: requests });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch personal exit requests' });
   }
 });
 

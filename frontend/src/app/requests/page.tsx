@@ -68,7 +68,8 @@ export default function RequestsPage() {
   const [showExit, setShowExit] = useState(false);
 
   const load = () => {
-    api.get('/exit-requests')
+    api.get('/exit-requests/my')
+      .catch(() => api.get('/exit-requests?mine=true'))
       .then(ex => {
         setExitRequests(ex.data?.data || []);
       })

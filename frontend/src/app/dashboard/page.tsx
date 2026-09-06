@@ -32,9 +32,9 @@ function EmployeeDashboard() {
 
   const loadData = React.useCallback(() => {
     Promise.all([
-      api.get('/exit-requests'),
+      api.get('/exit-requests/my').catch(() => api.get('/exit-requests?mine=true')),
       api.get('/gate-passes/my-active').catch(() => ({ data: { data: null } })),
-      api.get('/gate-passes').catch(() => ({ data: { data: [] } }))
+      api.get('/gate-passes/my-passes').catch(() => api.get('/gate-passes')).catch(() => ({ data: { data: [] } }))
     ]).then(([exit, activePass, passes]) => {
       const exitList = exit.data?.data || [];
       const passList = passes.data?.data || [];
