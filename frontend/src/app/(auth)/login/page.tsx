@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
-import { Shield, Mail, Lock, AlertCircle, ArrowRight, QrCode, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff, MessageSquare } from 'lucide-react';
+import { Shield, Mail, User, Lock, AlertCircle, ArrowRight, QrCode, KeyRound, CheckCircle2, RefreshCw, Eye, EyeOff, MessageSquare } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { ContactModal } from '@/components/ui/ContactModal';
@@ -67,7 +67,7 @@ export default function LoginPage() {
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotEmail) {
-      setForgotError('Please enter your registered email address.');
+      setForgotError('Please enter your registered email address or employee ID.');
       return;
     }
     setForgotError('');
@@ -75,11 +75,13 @@ export default function LoginPage() {
     try {
       const res = await api.post('/auth/forgot-password/request-otp', { email: forgotEmail });
       const otpCode = res.data?.data?.otp || '';
+      const resolvedEmail = res.data?.data?.email || forgotEmail;
       setReceivedOtp(otpCode);
+      setForgotEmail(resolvedEmail);
       setForgotSuccess(res.data?.message || 'Verification OTP code generated.');
       setForgotStep(2);
     } catch (err: any) {
-      setForgotError(err.response?.data?.message || 'Failed to request OTP code. Please check email address.');
+      setForgotError(err.response?.data?.message || 'Failed to request OTP code. Please check email or employee ID.');
     } finally {
       setForgotLoading(false);
     }
@@ -285,20 +287,20 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                {/* Email */}
+                {/* Email or Employee ID */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#334155' }}>
-                    Work Email Address <span style={{ color: '#ef4444' }}>*</span>
+                    Work Email or Employee ID <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Mail size={15} style={{ position: 'absolute', left: 12, color: '#94a3b8', flexShrink: 0 }} />
+                    <User size={15} style={{ position: 'absolute', left: 12, color: '#94a3b8', flexShrink: 0 }} />
                     <input
-                      type="email"
-                      placeholder="name@company.com"
+                      type="text"
+                      placeholder="e.g. name@company.com or EMP1001"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
-                      autoComplete="email"
+                      autoComplete="username"
                       style={{
                         width: '100%', paddingLeft: 38, paddingRight: 12,
                         paddingTop: 10, paddingBottom: 10,
@@ -311,6 +313,9 @@ export default function LoginPage() {
                       onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#f8fafc'; }}
                     />
                   </div>
+                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    Sign in with your work email or employee code (e.g. EMP1001).
+                  </span>
                 </div>
 
                 {/* Password */}
@@ -439,7 +444,7 @@ export default function LoginPage() {
           {forgotStep === 1 && (
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <p style={{ fontSize: '0.875rem', color: 'var(--slate-600)', lineHeight: 1.5 }}>
-                Enter your registered work email address. We will generate a secure 6-digit OTP verification code to reset your password.
+                Enter your registered work email address or Employee ID. We will generate a secure 6-digit OTP verification code to reset your password.
               </p>
 
               {forgotError && (
@@ -450,13 +455,13 @@ export default function LoginPage() {
               )}
 
               <div className="form-group">
-                <label className="form-label">Work Email Address <span className="required">*</span></label>
+                <label className="form-label">Work Email or Employee ID <span className="required">*</span></label>
                 <div className="form-input-icon">
-                  <Mail size={15} />
+                  <User size={15} />
                   <input
-                    type="email"
+                    type="text"
                     className="form-control"
-                    placeholder="name@company.com"
+                    placeholder="name@company.com or EMP1001"
                     value={forgotEmail}
                     onChange={e => setForgotEmail(e.target.value)}
                     required

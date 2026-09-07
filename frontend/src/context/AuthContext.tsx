@@ -123,9 +123,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  const login = async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
+  const login = async (emailOrId: string, password: string): Promise<{ ok: boolean; error?: string }> => {
     try {
-      const res = await api.post('/auth/login', { email, password });
+      const res = await api.post('/auth/login', {
+        email: emailOrId,
+        identifier: emailOrId,
+        password
+      });
       if (res.data?.success) {
         const { tokens, user: profile } = res.data.data;
         localStorage.setItem('access_token', tokens.accessToken);

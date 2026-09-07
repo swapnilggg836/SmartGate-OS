@@ -13,8 +13,12 @@ import { JwtPayload, UserRole } from '@smart-gate/types';
 const router = Router();
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1, 'Email or Employee ID is required').optional(),
+  identifier: z.string().min(1, 'Email or Employee ID is required').optional(),
   password: z.string().min(1, 'Password is required')
+}).refine(data => !!(data.email || data.identifier), {
+  message: 'Email or Employee ID is required',
+  path: ['email']
 });
 
 const registerSchema = z.object({
@@ -272,13 +276,27 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
   }
 });
 
-// POST /api/auth/login (Full Dynamic MySQL Authentication)
+// POST /api/auth/login (Full Dynamic MySQL Authentication via Email or Employee ID)
 router.post('/login', validateBody(loginSchema), async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const rawIdentifier = (req.body.identifier || req.body.email || '').trim();
+    const { password } = req.body;
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    if (!rawIdentifier) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email or Employee ID is required.'
+      });
+    }
+
+    // 1. Try finding user by email (case-insensitive where possible or direct)
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: rawIdentifier },
+          { email: rawIdentifier.toLowerCase() }
+        ]
+      },
       include: {
         employee: {
           include: {
@@ -287,6 +305,31 @@ router.post('/login', validateBody(loginSchema), async (req: Request, res: Respo
         }
       }
     });
+
+    // 2. If not found by email, lookup employee by employeeCode or employee ID
+    if (!user) {
+      const upper = rawIdentifier.toUpperCase();
+      const emp = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { employeeCode: rawIdentifier },
+            { employeeCode: upper },
+            { id: rawIdentifier }
+          ]
+        },
+        include: {
+          department: true,
+          user: true
+        }
+      });
+
+      if (emp && emp.user) {
+        user = {
+          ...emp.user,
+          employee: emp
+        } as any;
+      }
+    }
 
     if (!user || !user.isActive) {
       return res.status(401).json({
@@ -565,11 +608,11 @@ router.put('/change-password', authenticate, validateBody(changePasswordSchema),
 // ============================================================
 
 const requestResetOtpSchema = z.object({
-  email: z.string().email('Please provide a valid email address')
+  email: z.string().min(1, 'Please provide a valid email address or employee ID')
 });
 
 const verifyResetOtpSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1, 'Please provide a valid email address or employee ID'),
   otp: z.string().min(4, 'Valid OTP is required'),
   newPassword: z.string().min(6, 'New password must be at least 6 characters')
 });
@@ -577,19 +620,43 @@ const verifyResetOtpSchema = z.object({
 // POST /api/auth/forgot-password/request-otp (Public Forgot Password -> Send OTP)
 router.post('/forgot-password/request-otp', validateBody(requestResetOtpSchema), async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const rawInput = (req.body.email || req.body.identifier || '').trim();
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: rawInput },
+          { email: rawInput.toLowerCase() }
+        ]
+      },
       include: { employee: true }
     });
+
+    if (!user) {
+      const upper = rawInput.toUpperCase();
+      const emp = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { employeeCode: rawInput },
+            { employeeCode: upper },
+            { id: rawInput }
+          ]
+        },
+        include: { user: true }
+      });
+      if (emp && emp.user) {
+        user = { ...emp.user, employee: emp } as any;
+      }
+    }
 
     if (!user || !user.isActive) {
       return res.status(404).json({
         success: false,
-        message: 'No active user found with this email address.'
+        message: 'No active user found with this email address or employee ID.'
       });
     }
+
+    const email = user.email;
 
     // Generate 6-digit numeric OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -681,15 +748,43 @@ router.post('/forgot-password/request-otp', validateBody(requestResetOtpSchema),
 // POST /api/auth/forgot-password/verify-otp (Verify OTP and Reset Password)
 router.post('/forgot-password/verify-otp', validateBody(verifyResetOtpSchema), async (req: Request, res: Response) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const rawInput = (req.body.email || req.body.identifier || '').trim();
+    const { otp, newPassword } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: rawInput },
+          { email: rawInput.toLowerCase() }
+        ]
+      }
+    });
+
+    if (!user) {
+      const upper = rawInput.toUpperCase();
+      const emp = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { employeeCode: rawInput },
+            { employeeCode: upper },
+            { id: rawInput }
+          ]
+        },
+        include: { user: true }
+      });
+      if (emp && emp.user) {
+        user = emp.user;
+      }
+    }
+
     if (!user || !user.isActive) {
       return res.status(404).json({
         success: false,
         message: 'No active user account found.'
       });
     }
+
+    const email = user.email;
 
     // Check OTP validity
     const validOtp = await prisma.passwordResetOtp.findFirst({
