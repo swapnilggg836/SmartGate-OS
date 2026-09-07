@@ -135,7 +135,7 @@ export default function UsersAdminPage() {
       await api.post('/users', {
         email: form.email,
         password: form.password,
-        role: form.role,
+        role: isAdmin ? form.role : 'EMPLOYEE',
         firstName: form.firstName,
         lastName: form.lastName,
         departmentId: form.departmentId,
@@ -288,9 +288,9 @@ export default function UsersAdminPage() {
           <div className="page-header-row">
             <div>
               <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <UserCheck size={22} style={{ color: 'var(--blue-700)' }} /> User Management
+                <UserCheck size={22} style={{ color: 'var(--blue-700)' }} /> {isAdmin ? 'User Management' : 'Employee Accounts'}
               </h1>
-              <p>{users.length} total users · {users.filter(u => u.isActive).length} active · {users.filter(u => !u.isActive).length} inactive</p>
+              <p>{users.length} total users · {users.filter(u => u.isActive).length} active · {isAdmin ? 'Manage all system accounts & roles' : 'Provision new employee accounts'}</p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn btn-outline btn-sm" onClick={downloadCsv}>
@@ -300,7 +300,7 @@ export default function UsersAdminPage() {
                 <RefreshCw size={14} />
               </button>
               <button className="btn btn-primary btn-sm" onClick={() => { setCreateOpen(true); setError(''); setFormErrors({}); }}>
-                <UserPlus size={14} /> Create New User
+                <UserPlus size={14} /> {isAdmin ? 'Create New User' : 'Create Employee Account'}
               </button>
             </div>
           </div>
@@ -651,15 +651,32 @@ export default function UsersAdminPage() {
       <Modal
         open={createOpen}
         onClose={() => { setCreateOpen(false); setFormErrors({}); setError(''); }}
-        title="Create New User"
+        title={isAdmin ? "Create New User (All Roles)" : "Create New Employee Account"}
         footer={<>
           <button className="btn btn-ghost" onClick={() => setCreateOpen(false)}>Cancel</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            {creating ? <><Spinner /> Creating...</> : <><UserPlus size={14} /> Create User</>}
+            {creating ? <><Spinner /> Creating...</> : <><UserPlus size={14} /> {isAdmin ? 'Create User' : 'Create Employee'}</>}
           </button>
         </>}
       >
         <div className="space-y-3">
+          {!isAdmin && (
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: 8,
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: '0.78rem',
+              color: '#1e40af'
+            }}>
+              <ShieldCheck size={16} color="#2563eb" style={{ flexShrink: 0 }} />
+              <span><strong>HR Provisioning:</strong> You are authorized to create <strong>Employee</strong> accounts. Manager, HR, and Security accounts must be created by Super Admin.</span>
+            </div>
+          )}
+
           {error && (
             <div className="alert alert-error" style={{ fontSize: '0.8rem' }}>
               <AlertCircle size={14} /><span>{error}</span>
@@ -727,9 +744,29 @@ export default function UsersAdminPage() {
             </div>
             <div className="form-group">
               <label className="form-label">Role <span className="required">*</span></label>
-              <select className="form-control" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                {(isAdmin ? ROLES : ROLES.filter(r => r !== 'SUPER_ADMIN')).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-              </select>
+              {isAdmin ? (
+                <select className="form-control" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                  {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                </select>
+              ) : (
+                <div style={{
+                  padding: '9px 12px',
+                  background: 'var(--slate-100)',
+                  border: '1px solid var(--slate-200)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  color: 'var(--slate-700)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <span className="badge badge-blue">Employee</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)', fontWeight: 400 }}>
+                    (HR can only create Employee accounts)
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

@@ -68,6 +68,16 @@ router.get('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), a
 router.post('/', authenticate, requireRoles(UserRole.SUPER_ADMIN, UserRole.HR), validateBody(createUserSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { email, password, role, firstName, lastName, departmentId, designation, phone, employeeCode, avatarUrl } = req.body;
+    const callerRole = req.user!.role;
+
+    // Security Rule: HR can ONLY create EMPLOYEE accounts.
+    // All other roles (SUPER_ADMIN, GM, HR, MANAGER, SECURITY_GUARD) can ONLY be created by Super Admin.
+    if (callerRole === UserRole.HR && role !== UserRole.EMPLOYEE) {
+      return res.status(403).json({
+        success: false,
+        message: 'Security Policy Violation: HR is only authorized to create Employee accounts. All other roles (Manager, HR, General Manager, Security Guard, and Super Admin) must be created by Super Admin.'
+      });
+    }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {

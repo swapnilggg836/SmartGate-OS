@@ -82,7 +82,15 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
     }
 
     const requestedRole = role || UserRole.EMPLOYEE;
-    let finalRole = requestedRole;
+
+    // Security Rule: HR can ONLY create EMPLOYEE accounts.
+    // Super Admin can create any account.
+    if (creatorRole === UserRole.HR && requestedRole !== UserRole.EMPLOYEE) {
+      return res.status(403).json({
+        success: false,
+        message: 'Security Policy Violation: HR is only authorized to create Employee accounts. Manager, HR, General Manager, Security Guard, and Super Admin accounts must be created by Super Admin.'
+      });
+    }
 
     // Protection rule: Only Super Admin can provision SUPER_ADMIN accounts
     if (requestedRole === UserRole.SUPER_ADMIN && creatorRole !== UserRole.SUPER_ADMIN && !isSecretAuthorized) {
@@ -91,6 +99,8 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
         message: 'Privilege Policy Violation: Only Super Admin can provision another Super Admin account.'
       });
     }
+
+    let finalRole = requestedRole;
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
