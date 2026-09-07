@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import {
   UserCheck, Search, ToggleLeft, ToggleRight, AlertCircle,
   Plus, RefreshCw, Eye, EyeOff, UserPlus, Download, KeyRound,
-  Copy, Check, ShieldCheck, Lock
+  Copy, Check, ShieldCheck, Lock, Trash2
 } from 'lucide-react';
 import { fmtDate } from '@/lib/utils';
 
@@ -39,6 +39,8 @@ export default function UsersAdminPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ open: boolean; user: any }>({ open: false, user: null });
   const [viewUser, setViewUser] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: any }>({ open: false, user: null });
+  const [deleting, setDeleting] = useState(false);
 
   // Reset Password Modal
   const [resetModal, setResetModal] = useState<{
@@ -230,6 +232,22 @@ export default function UsersAdminPage() {
       navigator.clipboard.writeText(resetModal.successResult.password);
       setResetModal(prev => ({ ...prev, copied: true }));
       setTimeout(() => setResetModal(prev => ({ ...prev, copied: false })), 2500);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteModal.user) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await api.delete(`/users/${deleteModal.user.id}`);
+      setSuccess(res.data?.message || `User ${deleteModal.user.email} was permanently deleted.`);
+      setDeleteModal({ open: false, user: null });
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to delete user account.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -455,6 +473,24 @@ export default function UsersAdminPage() {
                                 ? <><ToggleRight size={13} /> Deactivate</>
                                 : <><ToggleLeft size={13} /> Activate</>
                             }
+                          </button>
+
+                          {/* Delete User Action (Super Admin) */}
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setDeleteModal({ open: true, user: u })}
+                            title="Delete User Permanently"
+                            style={{
+                              padding: '4px 8px',
+                              color: '#dc2626',
+                              borderColor: '#fca5a5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: '0.72rem'
+                            }}
+                          >
+                            <Trash2 size={12} /> Delete
                           </button>
                         </div>
                       </td>
@@ -758,6 +794,109 @@ export default function UsersAdminPage() {
             ? `This will prevent <strong>${confirmModal.user?.email}</strong> from logging in. You can re-activate anytime.`
             : `This will restore login access for <strong>${confirmModal.user?.email}</strong>.`}
         </p>
+      </Modal>
+
+      {/* ============================
+          DELETE USER PERMANENTLY MODAL
+          ============================ */}
+      <Modal
+        open={deleteModal.open}
+        onClose={() => { if (!deleting) setDeleteModal({ open: false, user: null }); }}
+        title="🗑️ Delete User Permanently"
+        footer={<>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setDeleteModal({ open: false, user: null })}
+            disabled={deleting}
+          >
+            Cancel
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={handleDeleteUser}
+            disabled={deleting}
+            style={{
+              background: '#dc2626',
+              borderColor: '#dc2626',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontWeight: 700
+            }}
+          >
+            {deleting ? <Spinner white size="sm" /> : <Trash2 size={14} />}
+            {deleting ? 'Deleting User...' : 'Permanently Delete User'}
+          </button>
+        </>}
+      >
+        {deleteModal.user && (
+          <div style={{ padding: '6px 0' }}>
+            <div style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: 10,
+              padding: '14px 16px',
+              display: 'flex',
+              gap: 12,
+              alignItems: 'flex-start',
+              marginBottom: 16
+            }}>
+              <div style={{ color: '#dc2626', marginTop: 2 }}>
+                <AlertCircle size={20} />
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#991b1b', lineHeight: 1.5 }}>
+                <strong style={{ display: 'block', marginBottom: 2 }}>Warning: This action is permanent and cannot be undone!</strong>
+                All associated records (attendance, leaves, gate passes, notifications, and credentials) for this user will be completely purged from the MySQL database.
+              </div>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: '14px 16px',
+              marginBottom: 14
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px 12px', fontSize: '0.85rem' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>User:</span>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                  {deleteModal.user.employee ? `${deleteModal.user.employee.firstName} ${deleteModal.user.employee.lastName}` : deleteModal.user.email}
+                </span>
+
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Email:</span>
+                <span style={{ color: '#334155' }}>{deleteModal.user.email}</span>
+
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Role:</span>
+                <span>
+                  <span style={{ background: '#e2e8f0', color: '#1e293b', padding: '2px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700 }}>
+                    {deleteModal.user.role}
+                  </span>
+                </span>
+
+                {deleteModal.user.employee?.employeeCode && (
+                  <>
+                    <span style={{ color: '#64748b', fontWeight: 600 }}>Emp Code:</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1e40af' }}>
+                      {deleteModal.user.employee.employeeCode}
+                    </span>
+                  </>
+                )}
+
+                {deleteModal.user.employee?.department && (
+                  <>
+                    <span style={{ color: '#64748b', fontWeight: 600 }}>Department:</span>
+                    <span style={{ color: '#334155' }}>{deleteModal.user.employee.department}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0' }}>
+              Are you sure you want to proceed with permanently deleting this account?
+            </p>
+          </div>
+        )}
       </Modal>
     </AppLayout>
   );

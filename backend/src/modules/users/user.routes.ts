@@ -631,5 +631,162 @@ router.post('/:id/reset-password', authenticate, requireRoles(UserRole.SUPER_ADM
   }
 });
 
+// DELETE /api/users/:id (Super Admin only — Permanently delete a user account)
+router.delete('/:id', authenticate, requireRoles(UserRole.SUPER_ADMIN), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user!.userId;
+
+    if (currentUserId === id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Security Policy: You cannot delete your own account while logged in.'
+      });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        employee: true,
+        userRoles: true
+      }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found.'
+      });
+    }
+
+    // Safety check: Do not allow deleting the last active Super Admin
+    if (targetUser.role === UserRole.SUPER_ADMIN) {
+      const superAdminCount = await prisma.user.count({
+        where: { role: UserRole.SUPER_ADMIN, isActive: true }
+      });
+      if (superAdminCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Protection Policy: Cannot delete the last active Super Admin account.'
+        });
+      }
+    }
+
+    // Perform complete relational cleanup in a database transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Audit logs: decouple foreign key to preserve audit trail
+      await tx.auditLog.updateMany({
+        where: { userId: id },
+        data: { userId: null }
+      });
+
+      // 2. Gate logs: decouple security user
+      await tx.gateLog.updateMany({
+        where: { securityUserId: id },
+        data: { securityUserId: null }
+      });
+
+      // 3. Approvals: remove approval records created by this approver
+      await tx.approval.deleteMany({
+        where: { approverId: id }
+      });
+
+      // 4. Visitor check-in / check-out: decouple security guard
+      await tx.visitorCheckIn.deleteMany({
+        where: { securityUserId: id }
+      });
+      await tx.visitorCheckOut.deleteMany({
+        where: { securityUserId: id }
+      });
+
+      // 5. Visitor visits: remove visits where target is host or creator
+      const visits = await tx.visitorVisit.findMany({
+        where: { OR: [{ hostUserId: id }, { createdByUserId: id }] },
+        select: { id: true }
+      });
+      const visitIds = visits.map(v => v.id);
+      if (visitIds.length > 0) {
+        await tx.visitorPass.deleteMany({
+          where: { visitId: { in: visitIds } }
+        });
+        await tx.visitorGroupMember.deleteMany({
+          where: { visitId: { in: visitIds } }
+        });
+        await tx.visitorAuditLog.deleteMany({
+          where: { visitId: { in: visitIds } }
+        });
+        await tx.visitorVisit.deleteMany({
+          where: { id: { in: visitIds } }
+        });
+      }
+
+      // 6. Notifications & OTPs
+      await tx.notification.deleteMany({
+        where: { userId: id }
+      });
+      await tx.passwordResetOtp.deleteMany({
+        where: { email: targetUser.email }
+      });
+
+      // 7. Authority Connections & Delegations
+      await tx.authorityConnection.deleteMany({
+        where: { OR: [{ userId: id }, { authorityUserId: id }] }
+      });
+      await tx.temporaryDelegation.deleteMany({
+        where: { OR: [{ fromUserId: id }, { toUserId: id }] }
+      });
+
+      // 8. Junction user roles
+      await tx.userRole.deleteMany({
+        where: { userId: id }
+      });
+
+      // 9. Employee record and all employee sub-tables
+      if (targetUser.employee) {
+        const empId = targetUser.employee.id;
+        await tx.attendance.deleteMany({ where: { employeeId: empId } });
+        await tx.leaveBalance.deleteMany({ where: { employeeId: empId } });
+        await tx.gateLog.deleteMany({ where: { employeeId: empId } });
+        await tx.gatePass.deleteMany({ where: { employeeId: empId } });
+        await tx.leaveRequest.deleteMany({ where: { employeeId: empId } });
+        await tx.exitRequest.deleteMany({ where: { employeeId: empId } });
+        await tx.employeeStatusHistory.deleteMany({ where: { employeeId: empId } });
+        await tx.employee.delete({ where: { id: empId } });
+      }
+
+      // 10. Delete the user
+      await tx.user.delete({
+        where: { id }
+      });
+    });
+
+    await logAudit({
+      userId: req.user!.userId,
+      userEmail: req.user!.email,
+      action: 'USER_DELETED',
+      entity: 'User',
+      entityId: id,
+      newValues: {
+        deletedUserEmail: targetUser.email,
+        deletedUserRole: targetUser.role,
+        deletedEmployeeCode: targetUser.employee?.employeeCode || null,
+        deletedBy: req.user!.email
+      },
+      req
+    });
+
+    return res.json({
+      success: true,
+      message: `User account ${targetUser.email} and all associated records have been permanently deleted.`
+    });
+  } catch (err: any) {
+    console.error('Delete user error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete user: ' + (err.message || '')
+    });
+  }
+});
+
 export default router;
 
