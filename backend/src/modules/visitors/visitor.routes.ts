@@ -158,13 +158,27 @@ async function issueVisitorPass(visitId: string): Promise<any> {
     });
   }
 
-  // Channel 2: SMS Notification
+  // Channel 2: SMS Notification to Visitor
   if (visit.visitor.mobile) {
     await sendSmsNotification({
       to: visit.visitor.mobile,
       message: `SmartGate Pass ${passNumber} confirmed for visit to ${hostName} on ${dateFormatted}. View your digital QR pass: ${passUrl}. Present at security gate on arrival.`
     });
   }
+
+  // Channel 3: Notification to Host Employee ("Whom to Meet")
+  if (hostEmp?.phone) {
+    await sendSmsNotification({
+      to: hostEmp.phone,
+      message: `SmartGate: Visitor pass ${passNumber} issued for ${visit.visitor.fullName} (${visit.visitor.organization || 'Guest'}). Scheduled: ${dateFormatted} at ${visit.expectedEntryTime}. View pass: ${passUrl}`
+    });
+  }
+
+  console.log(`\n💬 [WHATSAPP DISPATCH] -> Host Employee ("Whom to Meet"):`);
+  console.log(`   To Host: ${hostName} (${hostEmp?.phone || 'No phone registered'})`);
+  console.log(`   Visitor: ${visit.visitor.fullName} (${visit.visitor.organization || 'Guest'})`);
+  console.log(`   Pass URL: ${passUrl}`);
+  console.log(`   Message: Visitor pass ${passNumber} issued for ${visit.visitor.fullName}. Open pass: ${passUrl}\n`);
 
   return pass;
 }
@@ -234,7 +248,7 @@ router.get('/pass/:token', async (req: Request, res: Response) => {
         visit: {
           include: {
             visitor: true,
-            hostUser: { select: { email: true, employee: { select: { firstName: true, lastName: true, designation: true, department: { select: { name: true } } } } } },
+            hostUser: { select: { email: true, employee: { select: { firstName: true, lastName: true, designation: true, phone: true, department: { select: { name: true } } } } } },
             department: { select: { name: true } },
             checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
             checkOuts: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -253,6 +267,8 @@ router.get('/pass/:token', async (req: Request, res: Response) => {
         visitDate: pass.visit.visitDate, expectedEntryTime: pass.visit.expectedEntryTime, expectedExitTime: pass.visit.expectedExitTime,
         hostName: hostEmp ? `${hostEmp.firstName} ${hostEmp.lastName}` : pass.visit.hostUser.email,
         hostDesignation: hostEmp?.designation || '',
+        hostPhone: hostEmp?.phone || null,
+        hostEmail: pass.visit.hostUser?.email || null,
         departmentName: pass.visit.department?.name || hostEmp?.department?.name || '',
         numberOfVisitors: pass.visit.numberOfVisitors,
         photoUrl: pass.visit.photoUrl || pass.visit.visitor.photoUrl || null,

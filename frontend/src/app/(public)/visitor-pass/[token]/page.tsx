@@ -71,6 +71,7 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
   const [side, setSide] = useState<'front' | 'back'>('front');
   const [responding, setResponding] = useState(false);
   const [responseMsg, setResponseMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const loadPass = () => {
@@ -129,7 +130,53 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
     window.print();
   };
 
-  const handleShareWhatsApp = () => {
+  // Share pass directly to Host Employee ("Whom to Meet")
+  const handleShareWhatsAppToHost = () => {
+    if (!pass) return;
+    const passUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const cleanHostPhone = (pass.hostPhone || '').replace(/[^0-9]/g, '');
+    const phoneParam = cleanHostPhone ? `&phone=${cleanHostPhone}` : '';
+    const msg = encodeURIComponent(
+      `*SmartGate OS · Visitor Pass for Your Meeting*\n\n` +
+      `Hello *${pass.hostName}*,\n` +
+      `A visitor pass has been generated for your upcoming meeting:\n\n` +
+      `🎫 *Pass Number:* ${pass.passNumber}\n` +
+      `👤 *Visitor:* ${pass.visitorName} ${pass.organization ? `(${pass.organization})` : ''}\n` +
+      `📞 *Visitor Contact:* ${pass.mobile || pass.visitorPhone || 'On file'}\n` +
+      `🏢 *Department:* ${pass.departmentName || 'Campus Main'}\n` +
+      `📅 *Date:* ${new Date(pass.visitDate).toLocaleDateString('en-IN')}\n` +
+      `⏰ *Schedule:* ${pass.expectedEntryTime} - ${pass.expectedExitTime}\n` +
+      `📋 *Purpose:* ${pass.purpose || 'Campus Visit'}\n` +
+      (pass.vehicleNumber ? `🚗 *Vehicle:* ${pass.vehicleNumber}\n` : '') +
+      (pass.numberOfVisitors > 1 ? `👥 *Group Size:* ${pass.numberOfVisitors} Persons\n` : '') +
+      `\n📱 *View & Verify Digital QR Pass:*\n${passUrl}\n\n` +
+      `Please verify or present this pass when the visitor arrives at the gate.`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${msg}${phoneParam}`, '_blank');
+  };
+
+  // Share pass directly to the Visitor
+  const handleShareWhatsAppToVisitor = () => {
+    if (!pass) return;
+    const passUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const cleanVisitorPhone = (pass.mobile || pass.visitorPhone || '').replace(/[^0-9]/g, '');
+    const phoneParam = cleanVisitorPhone ? `&phone=${cleanVisitorPhone}` : '';
+    const msg = encodeURIComponent(
+      `*SmartGate OS · Official Campus Visitor Pass*\n\n` +
+      `Hello *${pass.visitorName}*,\n` +
+      `Your approved campus visitor pass is ready:\n\n` +
+      `🎫 *Pass Code:* ${pass.passNumber}\n` +
+      `👤 *Host (Whom to Meet):* ${pass.hostName} (${pass.departmentName || 'Campus'})\n` +
+      `📅 *Valid Date:* ${new Date(pass.visitDate).toLocaleDateString('en-IN')}\n` +
+      `⏰ *Entry Window:* ${pass.expectedEntryTime} - ${pass.expectedExitTime}\n` +
+      `📍 *Gate:* Main Security Gate 1\n` +
+      `\n📱 *Open Your Scannable QR Pass:*\n${passUrl}\n\n` +
+      `Show this QR code to Security at the gate barrier for seamless entry & exit.`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${msg}${phoneParam}`, '_blank');
+  };
+
+  const handleShareWhatsAppGeneric = () => {
     if (!pass) return;
     const passUrl = typeof window !== 'undefined' ? window.location.href : '';
     const msg = encodeURIComponent(
@@ -149,7 +196,7 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
     if (typeof window !== 'undefined') {
       navigator.clipboard.writeText(window.location.href);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
@@ -215,7 +262,7 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
         // Details Section
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 18px system-ui, sans-serif';
-        ctx.fillText(`Host: ${pass.hostName}`, 50, 590);
+        ctx.fillText(`Host (Whom to Meet): ${pass.hostName}`, 50, 590);
 
         ctx.font = '16px system-ui, sans-serif';
         ctx.fillStyle = '#475569';
@@ -223,11 +270,16 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
         ctx.fillText(`Purpose: ${pass.purpose || 'Campus Visit'}`, 50, 650);
         ctx.fillText(`Date: ${new Date(pass.visitDate).toLocaleDateString('en-IN')}`, 50, 680);
         ctx.fillText(`Expected Time: ${pass.expectedEntryTime} – ${pass.expectedExitTime}`, 50, 710);
-        if (pass.visitorPhone) {
-          ctx.fillText(`Contact: ${pass.visitorPhone}`, 50, 740);
+        
+        const visitorContact = pass.mobile || pass.visitorPhone;
+        if (visitorContact) {
+          ctx.fillText(`Visitor Phone: ${visitorContact}`, 50, 740);
+        }
+        if (pass.hostPhone) {
+          ctx.fillText(`Host Phone: ${pass.hostPhone}`, 50, 770);
         }
         if (pass.vehicleNumber) {
-          ctx.fillText(`Vehicle: ${pass.vehicleNumber}`, 50, 770);
+          ctx.fillText(`Vehicle: ${pass.vehicleNumber}`, 50, pass.hostPhone ? 800 : 770);
         }
 
         // Footer Banner
@@ -241,9 +293,11 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
         // Download PNG
         const pngFile = canvas.toDataURL('image/png');
         const downloadLink = document.createElement('a');
-        downloadLink.download = `${pass.passNumber}-Badge.png`;
+        downloadLink.download = `VisitorPass_${pass.passNumber}.png`;
         downloadLink.href = pngFile;
         downloadLink.click();
+        setDownloadSuccess(true);
+        setTimeout(() => setDownloadSuccess(false), 4000);
       };
       img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
     }
@@ -956,93 +1010,177 @@ export default function VisitorPassPage({ params }: { params: { token: string } 
           </div>
 
           {/* ACTION BUTTONS (Hidden on print) */}
-          <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button
-                onClick={handlePrint}
-                style={{
-                  background: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 12,
-                  padding: '12px 16px',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  boxShadow: '0 4px 14px rgba(37,99,235,0.3)'
-                }}
-              >
-                <Printer size={16} /> Print Pass
-              </button>
+          <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 20 }}>
+            {downloadSuccess && (
+              <div style={{
+                background: '#dcfce7',
+                border: '1.5px solid #86efac',
+                color: '#15803d',
+                borderRadius: 12,
+                padding: '10px 14px',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                <Check size={16} /> Digital pass badge downloaded successfully! Check your downloads folder.
+              </div>
+            )}
 
-              <button
-                onClick={handleShareWhatsApp}
-                style={{
-                  background: '#25D366',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 12,
-                  padding: '12px 16px',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  boxShadow: '0 4px 14px rgba(37,211,102,0.3)'
-                }}
-              >
-                <MessageCircle size={16} /> WhatsApp
-              </button>
-            </div>
-
+            {/* Primary Download & Print Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button
                 onClick={handleDownloadBadge}
                 style={{
-                  background: 'rgba(255,255,255,0.2)',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
                   color: 'white',
-                  border: '1px solid rgba(255,255,255,0.4)',
+                  border: 'none',
                   borderRadius: 12,
-                  padding: '10px 14px',
-                  fontSize: '0.8rem',
+                  padding: '13px 16px',
+                  fontSize: '0.875rem',
                   fontWeight: 700,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
+                  transition: 'transform 0.15s'
                 }}
                 title="Download full badge image"
               >
-                <Download size={14} /> Download Badge
+                <Download size={17} /> Download Pass
               </button>
 
               <button
-                onClick={handleCopyLink}
+                onClick={handlePrint}
                 style={{
-                  background: 'rgba(255,255,255,0.15)',
+                  background: 'rgba(255,255,255,0.18)',
                   color: 'white',
-                  border: '1px solid rgba(255,255,255,0.3)',
+                  border: '1px solid rgba(255,255,255,0.35)',
                   borderRadius: 12,
-                  padding: '10px 14px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
+                  padding: '13px 16px',
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6
+                  gap: 8
                 }}
               >
-                <Share2 size={14} /> {copied ? 'Copied Link!' : 'Copy Link'}
+                <Printer size={16} /> Print / Save PDF
               </button>
             </div>
+
+            {/* Dedicated WhatsApp Delivery Card */}
+            <div style={{
+              background: 'rgba(255,255,255,0.95)',
+              borderRadius: 14,
+              padding: '14px 16px',
+              border: '1px solid rgba(255,255,255,0.4)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                color: '#15803d',
+                letterSpacing: '0.02em',
+                textTransform: 'uppercase'
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <MessageCircle size={15} color="#16a34a" /> WhatsApp Delivery &amp; Sharing
+                </span>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'none', fontWeight: 500 }}>
+                  Instant digital pass delivery
+                </span>
+              </div>
+
+              {/* 1. Send to Host (Whom to Meet) */}
+              <button
+                onClick={handleShareWhatsAppToHost}
+                style={{
+                  width: '100%',
+                  background: '#25D366',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '11px 14px',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 3px 10px rgba(37,211,102,0.30)'
+                }}
+                title="Send visitor pass directly to host employee on WhatsApp"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <MessageCircle size={17} />
+                  <span>Send Pass to Host (Whom to Meet)</span>
+                </div>
+                <span style={{ fontSize: '0.72rem', opacity: 0.95, background: 'rgba(0,0,0,0.18)', padding: '3px 8px', borderRadius: 6, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {pass.hostName}
+                </span>
+              </button>
+
+              {/* 2. Send to Visitor */}
+              <button
+                onClick={handleShareWhatsAppToVisitor}
+                style={{
+                  width: '100%',
+                  background: '#128C7E',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
+                title="Send visitor pass directly to visitor on WhatsApp"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <MessageCircle size={16} />
+                  <span>Send Pass to Visitor</span>
+                </div>
+                <span style={{ fontSize: '0.72rem', opacity: 0.95, background: 'rgba(0,0,0,0.18)', padding: '3px 8px', borderRadius: 6, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {pass.visitorName}
+                </span>
+              </button>
+            </div>
+
+            {/* Copy Link */}
+            <button
+              onClick={handleCopyLink}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 12,
+                padding: '10px 14px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6
+              }}
+            >
+              <Share2 size={14} /> {copied ? '✓ Pass Link Copied to Clipboard!' : 'Copy Direct Pass Link'}
+            </button>
           </div>
 
           <p className="no-print" style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', marginTop: 20 }}>
