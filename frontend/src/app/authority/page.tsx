@@ -245,7 +245,7 @@ export default function AuthorityPage() {
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--blue-100)', gap: 8 }}>
+        <div className="tabs-nav">
           {[
             { id: 'my-authorities', label: 'My Authorities', icon: <Link2 size={15} /> },
             { id: 'requests-inbox', label: `Requests Inbox${pendingInbox.length > 0 ? ` (${pendingInbox.length})` : ''}`, icon: <UserCheck size={15} /> },
@@ -254,14 +254,7 @@ export default function AuthorityPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: '0.85rem', fontWeight: 600, marginBottom: -2,
-                borderBottom: activeTab === tab.id ? '2px solid var(--blue-700)' : '2px solid transparent',
-                color: activeTab === tab.id ? 'var(--blue-700)' : 'var(--slate-500)',
-                transition: 'all 0.15s'
-              }}
+              className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
             >
               {tab.icon}{tab.label}
             </button>
@@ -283,7 +276,7 @@ export default function AuthorityPage() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 14 }}>
                 {myConnections.map(conn => {
                   const statusCfg = STATUS_CONFIG[conn.status];
                   const emp = conn.authorityUser?.employee;
@@ -371,7 +364,7 @@ export default function AuthorityPage() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 14 }}>
                 {pendingInbox.map(conn => {
                   const emp = conn.user?.employee;
                   return (
@@ -473,7 +466,7 @@ export default function AuthorityPage() {
               </div>
 
               {searchResults.length > 0 ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 10 }}>
                   {searchResults.map(result => (
                     <div key={result.id} className="card" style={{ padding: 14, background: 'var(--slate-50)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

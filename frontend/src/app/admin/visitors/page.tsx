@@ -132,21 +132,23 @@ export default function AdminVisitorsPage() {
                 {emergency.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 40, color: 'var(--slate-500)' }}><CheckCircle2 size={40} color="#16a34a" /><p style={{ marginTop: 12 }}>No visitors currently inside.</p></div>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr style={{ background: 'var(--slate-50)' }}>{['Visitor', 'Host', 'Department', 'Entry Time', 'Expected Exit', 'Status'].map(h => <th key={h} style={{ padding: '8px 12px', fontSize: '0.75rem', textAlign: 'left', fontWeight: 600, color: 'var(--slate-600)' }}>{h}</th>)}</tr></thead>
-                    <tbody>
-                      {emergency.map((e: any, i: number) => (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--slate-100)' }}>
-                          <td style={{ padding: '10px 12px' }}><div style={{ fontWeight: 600 }}>{e.visitorName}</div><div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{e.mobile}</div></td>
-                          <td style={{ padding: '10px 12px' }}>{e.hostName}</td>
-                          <td style={{ padding: '10px 12px' }}>{e.department}</td>
-                          <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{e.entryTime ? new Date(e.entryTime).toLocaleTimeString() : '-'}</td>
-                          <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{e.expectedExitTime}</td>
-                          <td style={{ padding: '10px 12px' }}><span className={`badge ${statusBadgeClass(e.status)}`}>{statusLabel(e.status)}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead><tr>{['Visitor', 'Host', 'Department', 'Entry Time', 'Expected Exit', 'Status'].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {emergency.map((e: any, i: number) => (
+                          <tr key={i}>
+                            <td><div style={{ fontWeight: 600 }}>{e.visitorName}</div><div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{e.mobile}</div></td>
+                            <td>{e.hostName}</td>
+                            <td>{e.department}</td>
+                            <td className="font-mono">{e.entryTime ? new Date(e.entryTime).toLocaleTimeString() : '-'}</td>
+                            <td className="font-mono">{e.expectedExitTime}</td>
+                            <td><span className={`badge ${statusBadgeClass(e.status)}`}>{statusLabel(e.status)}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>

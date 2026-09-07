@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
@@ -28,6 +29,9 @@ function initials(first?: string, last?: string) {
 }
 
 export default function UsersAdminPage() {
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isHR = currentUser?.role === 'HR';
   const [users, setUsers] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -425,14 +429,20 @@ export default function UsersAdminPage() {
                       </td>
                       <td style={{ fontSize: '0.78rem' }}>{u.employee?.department || '—'}</td>
                       <td>
-                        <select
-                          className="form-control"
-                          value={u.role}
-                          onChange={e => changeRole(u.id, e.target.value)}
-                          style={{ padding: '4px 6px', fontSize: '0.72rem', minWidth: 110 }}
-                        >
-                          {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                        </select>
+                        {isAdmin ? (
+                          <select
+                            className="form-control"
+                            value={u.role}
+                            onChange={e => changeRole(u.id, e.target.value)}
+                            style={{ padding: '4px 6px', fontSize: '0.72rem', minWidth: 110 }}
+                          >
+                            {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                          </select>
+                        ) : (
+                          <span className="badge badge-blue" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                            {ROLE_LABELS[u.role] || u.role}
+                          </span>
+                        )}
                       </td>
                       <td>
                         <span className={`badge ${u.isActive ? 'badge-green' : 'badge-red'}`}>
@@ -452,14 +462,16 @@ export default function UsersAdminPage() {
                           </button>
                           
                           {/* Reset Password Action for Super Admin */}
-                          <button
-                            className="btn btn-outline btn-sm"
-                            onClick={() => openResetPassword(u)}
-                            title="Reset User Password"
-                            style={{ padding: '4px 8px', color: 'var(--blue-700)', borderColor: 'var(--blue-300)', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}
-                          >
-                            <KeyRound size={12} /> Reset Pwd
-                          </button>
+                          {isAdmin && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => openResetPassword(u)}
+                              title="Reset User Password"
+                              style={{ padding: '4px 8px', color: 'var(--blue-700)', borderColor: 'var(--blue-300)', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}
+                            >
+                              <KeyRound size={12} /> Reset Pwd
+                            </button>
+                          )}
 
                           <button
                             className={`btn btn-sm ${u.isActive ? 'btn-danger-outline' : 'btn-success'}`}
@@ -476,22 +488,24 @@ export default function UsersAdminPage() {
                           </button>
 
                           {/* Delete User Action (Super Admin) */}
-                          <button
-                            className="btn btn-outline btn-sm"
-                            onClick={() => setDeleteModal({ open: true, user: u })}
-                            title="Delete User Permanently"
-                            style={{
-                              padding: '4px 8px',
-                              color: '#dc2626',
-                              borderColor: '#fca5a5',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              fontSize: '0.72rem'
-                            }}
-                          >
-                            <Trash2 size={12} /> Delete
-                          </button>
+                          {isAdmin && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => setDeleteModal({ open: true, user: u })}
+                              title="Delete User Permanently"
+                              style={{
+                                padding: '4px 8px',
+                                color: '#dc2626',
+                                borderColor: '#fca5a5',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontSize: '0.72rem'
+                              }}
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -714,7 +728,7 @@ export default function UsersAdminPage() {
             <div className="form-group">
               <label className="form-label">Role <span className="required">*</span></label>
               <select className="form-control" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                {(isAdmin ? ROLES : ROLES.filter(r => r !== 'SUPER_ADMIN')).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
               </select>
             </div>
           </div>

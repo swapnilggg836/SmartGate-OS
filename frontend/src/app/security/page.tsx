@@ -218,7 +218,7 @@ export default function SecurityPage() {
         )}
 
         {/* Live KPI Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+        <div className="kpi-grid">
           <div className="card" style={{ padding: '14px 18px', borderLeft: '4px solid var(--blue-600)' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--slate-500)' }}>Active Passes Today</div>
             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--blue-700)', marginTop: 2 }}>{stats.activePassesCount}</div>
@@ -261,7 +261,7 @@ export default function SecurityPage() {
         </div>
 
         {/* Feature Navigation Tabs */}
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--blue-100)', gap: 8 }}>
+        <div className="tabs-nav">
           {[
             { id: 'verify', label: 'Verify & Action Pass', icon: <Search size={15} /> },
             { id: 'outside', label: `Currently Outside (${stats.currentlyOutsideCount})`, icon: <UserX size={15} /> },
@@ -271,14 +271,7 @@ export default function SecurityPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: '0.85rem', fontWeight: 600, marginBottom: -2,
-                borderBottom: activeTab === tab.id ? '2px solid var(--blue-700)' : '2px solid transparent',
-                color: activeTab === tab.id ? 'var(--blue-700)' : 'var(--slate-500)',
-                transition: 'all 0.15s'
-              }}
+              className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
             >
               {tab.icon}{tab.label}
             </button>
@@ -342,7 +335,7 @@ export default function SecurityPage() {
 
                         {/* Masked Employee Info (Least Privilege) */}
                         <div style={{ padding: '20px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px 24px', marginBottom: 18 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px 16px', marginBottom: 18 }}>
                             {[
                               ['Employee Name', `${verifyResult.employee?.firstName} ${verifyResult.employee?.lastName}`],
                               ['Employee Code', verifyResult.employee?.employeeCode],
@@ -360,7 +353,7 @@ export default function SecurityPage() {
                           </div>
 
                           {/* Approval Badges */}
-                          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+                          <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
                             <span style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--green-50)', border: '1px solid var(--green-200)', color: 'var(--green-700)', fontSize: '0.78rem', fontWeight: 700 }}>
                               ✓ Manager Authority: APPROVED
                             </span>
@@ -626,7 +619,7 @@ export default function SecurityPage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="grid-2">
               {/* Visitors Inside */}
               <div className="card">
                 <div className="card-header">

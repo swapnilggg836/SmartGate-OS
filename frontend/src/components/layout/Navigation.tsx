@@ -43,7 +43,7 @@ function useNavItems(role: string, pendingCount: number, unread: number): NavIte
     // Admin config
     { label: 'Visitor Mgmt', href: '/admin/visitors', icon: <UserPlus size={16} />, roles: ['SUPER_ADMIN', 'HR', 'GM'] },
     { label: 'Departments', href: '/admin/departments', icon: <Settings size={16} />, roles: ['SUPER_ADMIN'] },
-    { label: 'Users', href: '/admin/users', icon: <UserCheck size={16} />, roles: ['SUPER_ADMIN'] },
+    { label: 'Users & Accounts', href: '/admin/users', icon: <UserCheck size={16} />, roles: ['SUPER_ADMIN', 'HR'] },
     { label: 'Company Report', href: '/admin/company', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN', 'GM'] },
     { label: 'Reports', href: '/admin/reports', icon: <BookOpen size={16} />, roles: ['SUPER_ADMIN', 'HR'] },
     { label: 'Audit Logs', href: '/admin/audit', icon: <ClipboardList size={16} />, roles: ['SUPER_ADMIN'] },

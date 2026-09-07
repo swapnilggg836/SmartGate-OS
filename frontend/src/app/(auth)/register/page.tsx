@@ -1,313 +1,132 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { useAuth, RegisterData } from '@/context/AuthContext';
-import { api } from '@/lib/api';
-import { Shield, User, Mail, Lock, Phone, Building, Briefcase, AlertCircle, ArrowRight, QrCode, ShieldCheck } from 'lucide-react';
-import { Spinner } from '@/components/ui/Spinner';
-
-type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE' | 'SECURITY_GUARD';
-
-const DEFAULT_DEPARTMENTS = [
-  { id: 'ENG-IT', name: 'Engineering & IT', code: 'ENG-IT' },
-  { id: 'HR-DEPT', name: 'Human Resources', code: 'HR-DEPT' },
-  { id: 'OPS-LOG', name: 'Operations & Logistics', code: 'OPS-LOG' },
-  { id: 'SEC-FAC', name: 'Security & Facilities', code: 'SEC-FAC' },
-  { id: 'FIN-ACC', name: 'Finance & Accounts', code: 'FIN-ACC' }
-];
+import Image from 'next/image';
+import { Shield, Lock, ArrowLeft, QrCode, ArrowRight, UserCheck, AlertTriangle } from 'lucide-react';
 
 export default function RegisterPage() {
-  const { register } = useAuth();
-  const [departments, setDepartments] = useState<any[]>(DEFAULT_DEPARTMENTS);
-  const [loadingDepts, setLoadingDepts] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState<{
-    firstName: string; lastName: string; email: string;
-    password: string; confirmPassword: string; phone: string;
-    departmentId: string; designation: string; role: UserRole; employeeCode: string;
-  }>({
-    firstName: '', lastName: '', email: '', password: '', confirmPassword: '',
-    phone: '', departmentId: 'ENG-IT', designation: '', role: 'EMPLOYEE', employeeCode: ''
-  });
-
-  const loadDepartments = () => {
-    setLoadingDepts(true);
-    api.get('/departments').then(res => {
-      if (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
-        setDepartments(res.data.data);
-        setForm(f => ({ ...f, departmentId: res.data.data[0].id }));
-      }
-    }).catch(err => {
-      console.warn('Using default departments list:', err.message);
-    }).finally(() => {
-      setLoadingDepts(false);
-    });
-  };
-
-  useEffect(() => {
-    loadDepartments();
-  }, []);
-
-  const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm(f => ({ ...f, [key]: e.target.value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
-    if (!form.departmentId) { setError('Please select a department'); return; }
-    setLoading(true);
-    const data: RegisterData = {
-      email: form.email, password: form.password,
-      firstName: form.firstName, lastName: form.lastName,
-      departmentId: form.departmentId, designation: form.designation,
-      phone: form.phone, role: form.role,
-      employeeCode: form.employeeCode.trim() || undefined
-    };
-    const result = await register(data);
-    if (!result.ok) { setError(result.error || 'Registration failed'); setLoading(false); }
-  };
-
   return (
     <div style={{
-      minHeight: '100vh', background: 'var(--blue-50)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px'
+      minHeight: '100vh',
+      background: 'linear-gradient(160deg, #e0ecff 0%, #eff6ff 50%, #f1f5f9 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px 16px'
     }}>
-      <div style={{ width: '100%', maxWidth: 560 }}>
+      <div style={{ width: '100%', maxWidth: 520 }}>
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{
-            width: 48, height: 48, borderRadius: 12, background: 'var(--blue-700)',
+            width: 56, height: 56, borderRadius: 16,
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
             color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 12, boxShadow: '0 4px 12px rgba(29,78,216,0.3)'
+            marginBottom: 14, boxShadow: '0 8px 24px rgba(29,78,216,0.35)'
           }}>
-            <Shield size={22} />
+            <Shield size={26} />
           </div>
-          <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--slate-800)', marginBottom: 4 }}>
-            Create Employee Account
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
+            SmartGate OS
           </h1>
-          <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem' }}>
-            Internal staff and faculty registration
+          <p style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 500 }}>
+            Enterprise Access &amp; Digital Gate Pass System
           </p>
         </div>
 
-        {/* Visitor Fast-Track Entry Banner (No login required) */}
+        {/* Security Policy Advisory Card */}
         <div style={{
-          background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
-          borderRadius: 14,
-          padding: '16px 18px',
-          marginBottom: 20,
-          color: 'white',
-          boxShadow: '0 8px 24px rgba(37, 99, 235, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          border: '1px solid rgba(255,255,255,0.2)'
+          background: 'white',
+          borderRadius: 18,
+          border: '1px solid #dde5f0',
+          boxShadow: '0 8px 32px rgba(15,23,42,0.10)',
+          overflow: 'hidden',
+          marginBottom: 16
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+            color: 'white',
+            padding: '20px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14
+          }}>
             <div style={{
-              width: 42, height: 42, borderRadius: 12,
+              width: 44, height: 44, borderRadius: 12,
               background: 'rgba(255,255,255,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
             }}>
-              <QrCode size={22} color="white" />
+              <Lock size={22} color="white" />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
-                Are you a Visitor?
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.01em' }}>
+                Public Self-Registration Disabled
               </div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: 2 }}>
-                Visitors do NOT need an employee account
+              <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: 2 }}>
+                Restricted to authorized enterprise provisioning
               </div>
             </div>
           </div>
-          <Link
-            href="/visitor-register"
-            style={{
-              background: 'white',
-              color: '#1d4ed8',
-              padding: '9px 14px',
-              borderRadius: 10,
-              fontSize: '0.8rem',
-              fontWeight: 800,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-            }}
-          >
-            Visitor Entry <ArrowRight size={14} />
-          </Link>
+
+          <div style={{ padding: '24px' }}>
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 12,
+              padding: '16px',
+              marginBottom: 20
+            }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <UserCheck size={20} color="#2563eb" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ fontSize: '0.85rem', color: '#334155', lineHeight: 1.55 }}>
+                  Under company security policy, employee and staff accounts cannot be self-registered.
+                  All accounts are created and provisioned directly by <strong>Human Resources (HR)</strong> or <strong>System Administrators</strong> in the internal User Management Console.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: 20, lineHeight: 1.5 }}>
+              • <strong>New Employee?</strong> Please contact your HR representative or reporting manager to have your work account issued.<br />
+              • <strong>Existing Staff?</strong> Sign in using your registered company email address.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Link
+                href="/login"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
+                  color: 'white', textDecoration: 'none', padding: '12px 18px',
+                  borderRadius: 10, fontWeight: 700, fontSize: '0.9rem',
+                  boxShadow: '0 4px 14px rgba(29,78,216,0.30)',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <ArrowLeft size={16} /> Return to Employee Sign In
+              </Link>
+
+              <Link
+                href="/visitor-register"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  background: 'white', color: '#1d4ed8', border: '1.5px solid #bfdbfe',
+                  textDecoration: 'none', padding: '11px 18px',
+                  borderRadius: 10, fontWeight: 700, fontSize: '0.85rem',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <QrCode size={16} /> Are You a Visitor? Open Visitor Entry Pass
+              </Link>
+            </div>
+          </div>
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title" style={{ fontSize: '1rem' }}>Employee Registration Form</h2>
-          </div>
-          <div className="card-body">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="alert alert-error">
-                  <AlertCircle size={15} />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* Name Row */}
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">First Name <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <User size={14} />
-                    <input type="text" className="form-control" placeholder="e.g. Rahul" value={form.firstName} onChange={set('firstName')} required />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Last Name <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <User size={14} />
-                    <input type="text" className="form-control" placeholder="e.g. Patil" value={form.lastName} onChange={set('lastName')} required />
-                  </div>
-                </div>
-              </div>
-
-              {/* Email & Phone */}
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">Work Email <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <Mail size={14} />
-                    <input type="email" className="form-control" placeholder="rahul@company.com" value={form.email} onChange={set('email')} required />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Phone Number <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <Phone size={14} />
-                    <input type="tel" className="form-control" placeholder="+91 98765 43210" value={form.phone} onChange={set('phone')} required />
-                  </div>
-                </div>
-              </div>
-
-              {/* Department & Role */}
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">Department <span className="required">*</span></label>
-                  <select className="form-control" value={form.departmentId} onChange={set('departmentId')} required>
-                    <option value="">{loadingDepts ? '⏳ Loading departments from MySQL...' : departments.length === 0 ? '⚠️ No departments found (Click to refresh)' : 'Select Department'}</option>
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
-                    ))}
-                  </select>
-                  {departments.length === 0 && !loadingDepts && (
-                    <button
-                      type="button"
-                      onClick={loadDepartments}
-                      className="text-xs text-blue-600 underline mt-1"
-                      style={{ fontSize: '0.75rem', color: 'var(--blue-700)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-                    >
-                      ↻ Refresh Departments
-                    </button>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>Account Role <span className="required">*</span></span>
-                    <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <ShieldCheck size={12} /> Standard Access
-                    </span>
-                  </label>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '9px 12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--slate-200)',
-                    background: '#f8fafc',
-                    color: 'var(--slate-800)',
-                    fontSize: '0.85rem',
-                    fontWeight: 600
-                  }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>👤</span> Employee (Staff Member)
-                    </span>
-                    <span style={{ fontSize: '0.7rem', background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
-                      DEFAULT
-                    </span>
-                  </div>
-                  <span className="form-hint" style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginTop: 4, display: 'block' }}>
-                    🔒 Super Admin, GM, HR, & Security roles are provisioned exclusively by Administrators.
-                  </span>
-                </div>
-              </div>
-
-              {/* Designation & Employee Code */}
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">Designation <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <Briefcase size={14} />
-                    <input type="text" className="form-control" placeholder="e.g. Software Engineer" value={form.designation} onChange={set('designation')} required />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Employee Code <span style={{ color: 'var(--slate-400)', fontWeight: 400 }}>(optional)</span></label>
-                  <input type="text" className="form-control" placeholder="Auto-generated if blank" value={form.employeeCode} onChange={set('employeeCode')} />
-                  <span className="form-hint">Leave blank to auto-generate e.g. EMP1007</span>
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">Password <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <Lock size={14} />
-                    <input type="password" className="form-control" placeholder="Min 6 characters" value={form.password} onChange={set('password')} required />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Confirm Password <span className="required">*</span></label>
-                  <div className="form-input-icon">
-                    <Lock size={14} />
-                    <input type="password" className="form-control" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} required />
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="btn btn-primary btn-full"
-                style={{ padding: '11px 16px', fontSize: '0.9rem', marginTop: 4 }}
-                disabled={loading}
-              >
-                {loading ? <><Spinner white size="sm" /> Creating Account…</> : <>Create Account <ArrowRight size={15} /></>}
-              </button>
-            </form>
-          </div>
-          <div className="card-footer" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.8125rem' }}>
-              Already have an account?{' '}
-              <Link href="/login" style={{ color: 'var(--blue-700)', fontWeight: 600, textDecoration: 'none' }}>
-                Sign In
-              </Link>
-            </span>
-            <span style={{ color: 'var(--slate-400)', fontSize: '0.75rem' }}>
-              Visiting campus today?{' '}
-              <Link href="/visitor-register" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
-                Fill Visitor Form (No Account Required) →
-              </Link>
-            </span>
-          </div>
+        {/* Footer */}
+        <div style={{ textAlign: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+            SmartGate OS · Enterprise Security &amp; Access Control
+          </span>
         </div>
       </div>
     </div>

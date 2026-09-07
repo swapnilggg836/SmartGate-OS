@@ -176,7 +176,7 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
             <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
               Multi-Channel Dispatch Summary
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="grid-2" style={{ gap: 10 }}>
               {/* Email / Gmail Channel */}
               <div style={{
                 background: recipientEmail ? '#f0fdf4' : '#f8fafc',
@@ -316,7 +316,7 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
           </div>
 
           {/* Modal Footer Controls */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="grid-2" style={{ gap: 10 }}>
             <Link
               href={fullPassUrl}
               target="_blank"
@@ -356,18 +356,18 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
           <p style={{ fontWeight: 600, fontSize: '0.8125rem', marginBottom: 8, color: 'var(--slate-700)' }}>Person to Visit</p>
           <HostSearch value={host} onChange={setHost} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">Full Name <span className="required">*</span></label><input className="form-control" value={form.fullName} onChange={set('fullName')} required placeholder="Visitor name" /></div>
           <div className="form-group"><label className="form-label">Mobile <span className="required">*</span></label><input className="form-control" value={form.mobile} onChange={set('mobile')} required placeholder="+91 XXXXXXXXXX" /></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">Gender</label>
             <select className="form-control" value={form.gender} onChange={set('gender')}>
               <option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option><option value="PREFER_NOT_TO_SAY">Prefer not to say</option>
             </select></div>
           <div className="form-group"><label className="form-label">Email (optional)</label><input type="email" className="form-control" value={form.email} onChange={set('email')} /></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">Organization</label><input className="form-control" value={form.organization} onChange={set('organization')} /></div>
           <div className="form-group"><label className="form-label">ID Type</label>
             <select className="form-control" value={form.idType} onChange={set('idType')}>
@@ -375,12 +375,12 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
             </select></div>
         </div>
         <div className="form-group"><label className="form-label">Purpose <span className="required">*</span></label><input className="form-control" value={form.purpose} onChange={set('purpose')} required /></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div className="form-grid-3">
           <div className="form-group"><label className="form-label">Visit Date <span className="required">*</span></label><input type="date" className="form-control" value={form.visitDate} onChange={set('visitDate')} required min={new Date().toISOString().split('T')[0]} /></div>
           <div className="form-group"><label className="form-label">Entry Time <span className="required">*</span></label><input type="time" className="form-control" value={form.expectedEntryTime} onChange={set('expectedEntryTime')} required /></div>
           <div className="form-group"><label className="form-label">Exit Time <span className="required">*</span></label><input type="time" className="form-control" value={form.expectedExitTime} onChange={set('expectedExitTime')} required /></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">No. of Visitors</label><input type="number" className="form-control" min={1} max={50} value={form.numberOfVisitors} onChange={set('numberOfVisitors')} /></div>
           <div className="form-group"><label className="form-label">Vehicle Number</label><input className="form-control" value={form.vehicleNumber} onChange={set('vehicleNumber')} placeholder="Optional" /></div>
         </div>
@@ -478,23 +478,10 @@ export default function VisitorsPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '2px solid var(--blue-100)', flexWrap: 'wrap' }}>
+        <div className="tabs-nav">
           <button
             onClick={() => setTab('my')}
-            style={{
-              padding: '10px 18px',
-              fontWeight: 600,
-              fontSize: '0.8125rem',
-              border: 'none',
-              background: 'none',
-              cursor: 'pointer',
-              marginBottom: -2,
-              borderBottom: tab === 'my' ? '2px solid var(--blue-700)' : '2px solid transparent',
-              color: tab === 'my' ? 'var(--blue-700)' : 'var(--slate-500)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8
-            }}
+            className={`tab-btn ${tab === 'my' ? 'active' : ''}`}
           >
             <UserPlus size={15} />
             <span>My Invitations ({myVisits.length})</span>
@@ -502,20 +489,7 @@ export default function VisitorsPage() {
 
           <button
             onClick={() => setTab('incoming')}
-            style={{
-              padding: '10px 18px',
-              fontWeight: 600,
-              fontSize: '0.8125rem',
-              border: 'none',
-              background: 'none',
-              cursor: 'pointer',
-              marginBottom: -2,
-              borderBottom: tab === 'incoming' ? '2px solid var(--blue-700)' : '2px solid transparent',
-              color: tab === 'incoming' ? 'var(--blue-700)' : 'var(--slate-500)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8
-            }}
+            className={`tab-btn ${tab === 'incoming' ? 'active' : ''}`}
           >
             <Users size={15} />
             <span>Incoming ({incoming.length})</span>

@@ -52,23 +52,44 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
   try {
     const { email, password, firstName, lastName, departmentId, designation, phone, role, employeeCode, avatarUrl } = req.body;
 
-    // Security Rule: Public self-registration is strictly restricted to EMPLOYEE accounts.
-    // Privileged accounts (SUPER_ADMIN, GM, HR, MANAGER, SECURITY_GUARD) must be provisioned
-    // by an administrator from /admin/users or supplied with an administrative setup secret.
-    const requestedRole = role || UserRole.EMPLOYEE;
+    // Security Rule: Public self-registration is strictly disabled.
+    // Accounts must be provisioned directly by HR or SUPER_ADMIN (or via administrative secret).
     const adminSecret = req.headers['x-admin-secret'] || (req.body as any)?.adminSecret;
     const configuredSecret = process.env.ADMIN_INVITATION_SECRET || 'smartgate-admin-secure-key-2026';
+    const isSecretAuthorized = adminSecret && adminSecret === configuredSecret;
 
-    let finalRole = UserRole.EMPLOYEE;
-    if (requestedRole !== UserRole.EMPLOYEE) {
-      if (adminSecret && adminSecret === configuredSecret) {
-        finalRole = requestedRole;
-      } else {
-        return res.status(403).json({
-          success: false,
-          message: 'Security Policy Violation: Public self-registration is restricted to Employee accounts only. High-privilege administrative roles (SUPER_ADMIN, GM, HR, MANAGER, SECURITY_GUARD) must be provisioned by a Super Admin inside the User Management Console.'
-        });
+    let isSessionAuthorized = false;
+    let creatorRole: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, config.jwt.accessSecret) as JwtPayload;
+        if (decoded && (decoded.role === UserRole.SUPER_ADMIN || decoded.role === UserRole.HR)) {
+          isSessionAuthorized = true;
+          creatorRole = decoded.role;
+        }
+      } catch {
+        // Token invalid or expired
       }
+    }
+
+    if (!isSessionAuthorized && !isSecretAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Security Policy Violation: Public self-registration is disabled. All employee and staff accounts must be provisioned directly by Human Resources (HR) or System Administrators via the User Management Console (/admin/users).'
+      });
+    }
+
+    const requestedRole = role || UserRole.EMPLOYEE;
+    let finalRole = requestedRole;
+
+    // Protection rule: Only Super Admin can provision SUPER_ADMIN accounts
+    if (requestedRole === UserRole.SUPER_ADMIN && creatorRole !== UserRole.SUPER_ADMIN && !isSecretAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Privilege Policy Violation: Only Super Admin can provision another Super Admin account.'
+      });
     }
 
     // Check if user already exists

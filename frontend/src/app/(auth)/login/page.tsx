@@ -398,12 +398,15 @@ export default function LoginPage() {
               textAlign: 'center',
               display: 'flex', flexDirection: 'column', gap: 6,
             }}>
-              <span style={{ color: '#64748b', fontSize: '0.8125rem' }}>
-                Don&apos;t have an employee account?{' '}
-                <Link href="/register" style={{ color: '#1d4ed8', fontWeight: 700, textDecoration: 'none' }}>
-                  Create Account
-                </Link>
-              </span>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                color: '#64748b', fontSize: '0.78rem', background: '#f1f5f9',
+                padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0',
+                marginBottom: 2,
+              }}>
+                <Lock size={13} color="#475569" style={{ flexShrink: 0 }} />
+                <span>Employee accounts are provisioned by <strong>HR &amp; Admin</strong> only.</span>
+              </div>
               <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
                 Visiting campus today?{' '}
                 <Link href="/visitor-register" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>

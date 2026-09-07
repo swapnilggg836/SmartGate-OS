@@ -171,16 +171,16 @@ function WalkInModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">Full Name <span className="required">*</span></label><input className="form-control" value={form.fullName} onChange={set('fullName')} required /></div>
           <div className="form-group"><label className="form-label">Mobile <span className="required">*</span></label><input className="form-control" value={form.mobile} onChange={set('mobile')} required /></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">Organization</label><input className="form-control" value={form.organization} onChange={set('organization')} /></div>
           <div className="form-group"><label className="form-label">Expected Exit</label><input type="time" className="form-control" value={form.expectedExitTime} onChange={set('expectedExitTime')} required /></div>
         </div>
         <div className="form-group"><label className="form-label">Purpose <span className="required">*</span></label><input className="form-control" value={form.purpose} onChange={set('purpose')} required /></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="form-grid">
           <div className="form-group"><label className="form-label">No. of Visitors</label><input type="number" className="form-control" min={1} max={50} value={form.numberOfVisitors} onChange={set('numberOfVisitors')} /></div>
           <div className="form-group"><label className="form-label">Vehicle Number</label><input className="form-control" value={form.vehicleNumber} onChange={set('vehicleNumber')} /></div>
         </div>
@@ -447,7 +447,7 @@ export default function SecurityVisitorsPage() {
                           </div>
                           <span className={`badge ${statusBadgeClass(v.status)}`}>{statusLabel(v.status)}</span>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem', color: 'var(--slate-700)', marginBottom: 12 }}>
+                        <div className="form-grid" style={{ fontSize: '0.8rem', color: 'var(--slate-700)', marginBottom: 12 }}>
                           <div>Meeting: <strong>{hEmp ? `${hEmp.firstName} ${hEmp.lastName}` : v.hostUser?.email}</strong></div>
                           <div>Dept: <strong>{v.department?.name || hEmp?.department?.name || '—'}</strong></div>
                           <div>Purpose: <strong>{v.purpose}</strong></div>
