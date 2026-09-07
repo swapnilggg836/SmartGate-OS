@@ -14,6 +14,10 @@ import {
   generateSmsShareUrl,
   buildVisitorPassEmailTemplate
 } from '../../lib/email';
+import {
+  notifyHostVisitorPass,
+  notifyVisitorPassIssued
+} from '../../lib/whatsapp';
 import { UserRole } from '@smart-gate/types';
 
 const router = Router();
@@ -166,19 +170,31 @@ async function issueVisitorPass(visitId: string): Promise<any> {
     });
   }
 
-  // Channel 3: Notification to Host Employee ("Whom to Meet")
-  if (hostEmp?.phone) {
-    await sendSmsNotification({
-      to: hostEmp.phone,
-      message: `SmartGate: Visitor pass ${passNumber} issued for ${visit.visitor.fullName} (${visit.visitor.organization || 'Guest'}). Scheduled: ${dateFormatted} at ${visit.expectedEntryTime}. View pass: ${passUrl}`
+  // Channel 3: Automated WhatsApp Dispatch to Visitor
+  if (visit.visitor.mobile) {
+    await notifyVisitorPassIssued({
+      visitorPhone: visit.visitor.mobile,
+      visitorName: visit.visitor.fullName,
+      hostName,
+      passNumber,
+      schedule: `${dateFormatted}, ${visit.expectedEntryTime} - ${visit.expectedExitTime}`,
+      passUrl
     });
   }
 
-  console.log(`\n💬 [WHATSAPP DISPATCH] -> Host Employee ("Whom to Meet"):`);
-  console.log(`   To Host: ${hostName} (${hostEmp?.phone || 'No phone registered'})`);
-  console.log(`   Visitor: ${visit.visitor.fullName} (${visit.visitor.organization || 'Guest'})`);
-  console.log(`   Pass URL: ${passUrl}`);
-  console.log(`   Message: Visitor pass ${passNumber} issued for ${visit.visitor.fullName}. Open pass: ${passUrl}\n`);
+  // Channel 4: Automated WhatsApp Dispatch to Host ("Whom to Meet")
+  if (hostEmp?.phone) {
+    await notifyHostVisitorPass({
+      hostPhone: hostEmp.phone,
+      hostName,
+      visitorName: visit.visitor.fullName,
+      organization: visit.visitor.organization || undefined,
+      passNumber,
+      schedule: `${dateFormatted}, ${visit.expectedEntryTime} - ${visit.expectedExitTime}`,
+      purpose: visit.purpose,
+      passUrl
+    });
+  }
 
   return pass;
 }
