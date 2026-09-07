@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth, RegisterData } from '@/context/AuthContext';
 import { api } from '@/lib/api';
-import { Shield, User, Mail, Lock, Phone, Building, Briefcase, AlertCircle, ArrowRight, QrCode } from 'lucide-react';
+import { Shield, User, Mail, Lock, Phone, Building, Briefcase, AlertCircle, ArrowRight, QrCode, ShieldCheck } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 
 type UserRole = 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE' | 'SECURITY_GUARD';
@@ -219,14 +219,34 @@ export default function RegisterPage() {
                   )}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Role <span className="required">*</span></label>
-                  <select className="form-control" value={form.role} onChange={set('role')}>
-                    <option value="EMPLOYEE">Employee</option>
-                    <option value="MANAGER">Manager / Team Lead</option>
-                    <option value="HR">HR Director</option>
-                    <option value="SECURITY_GUARD">Security Guard</option>
-                    <option value="SUPER_ADMIN">Super Admin</option>
-                  </select>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Account Role <span className="required">*</span></span>
+                    <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <ShieldCheck size={12} /> Standard Access
+                    </span>
+                  </label>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '9px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--slate-200)',
+                    background: '#f8fafc',
+                    color: 'var(--slate-800)',
+                    fontSize: '0.85rem',
+                    fontWeight: 600
+                  }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>👤</span> Employee (Staff Member)
+                    </span>
+                    <span style={{ fontSize: '0.7rem', background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
+                      DEFAULT
+                    </span>
+                  </div>
+                  <span className="form-hint" style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginTop: 4, display: 'block' }}>
+                    🔒 Super Admin, GM, HR, & Security roles are provisioned exclusively by Administrators.
+                  </span>
                 </div>
               </div>
 

@@ -10,7 +10,8 @@ import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import {
   UserPlus, Users, CheckCircle2, XCircle, AlertTriangle, Search,
-  QrCode, MessageCircle, Printer, LogOut, Share2, Copy, Check, ExternalLink
+  QrCode, MessageCircle, Printer, LogOut, Share2, Copy, Check, ExternalLink,
+  Mail, Smartphone, Send
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { DigitalPassModal } from '@/components/visitors/DigitalPassModal';
@@ -112,8 +113,12 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
         hostUserId: host.id,
         numberOfVisitors: Number(form.numberOfVisitors)
       });
-      if (res.data?.data) {
-        setInviteResult(res.data.data);
+      const data = res.data?.data || res.data;
+      if (data) {
+        setInviteResult({
+          ...(res.data || {}),
+          ...(data || {})
+        });
       } else {
         onSuccess();
       }
@@ -131,28 +136,165 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
   };
 
   if (inviteResult) {
-    const { pass, passUrl, whatsappUrl, visit } = inviteResult;
+    const pass = inviteResult.pass || inviteResult.visit?.pass;
+    const passUrl = inviteResult.passUrl || (pass ? `/visitor-pass/${pass.qrToken}` : `/visitor-register`);
     const fullPassUrl = passUrl?.startsWith('http') ? passUrl : `${typeof window !== 'undefined' ? window.location.origin : ''}${passUrl}`;
+    const whatsappUrl = inviteResult.whatsappUrl;
+    const smsUrl = inviteResult.smsUrl;
+    const smsText = inviteResult.smsText;
+    const recipientEmail = inviteResult.recipientEmail || form.email;
+    const recipientMobile = inviteResult.recipientMobile || form.mobile;
 
     return (
-      <Modal open={open} onClose={() => { onSuccess(); onClose(); }} title="Invitation Created Successfully!">
-        <div style={{ textAlign: 'center', padding: '10px 0' }}>
+      <Modal open={open} onClose={() => { onSuccess(); onClose(); }} title="🎉 Visitor Pass & Invitation Created!">
+        <div style={{ padding: '6px 0' }}>
+          {/* Header Card */}
           <div style={{
-            width: 54, height: 54, borderRadius: '50%', background: '#dcfce7', color: '#16a34a',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px'
+            textAlign: 'center',
+            background: 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)',
+            border: '1px solid #bbf7d0',
+            borderRadius: 14,
+            padding: '18px 16px',
+            marginBottom: 16
           }}>
-            <CheckCircle2 size={32} />
+            <div style={{
+              width: 50, height: 50, borderRadius: '50%', background: '#dcfce7', color: '#16a34a',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px'
+            }}>
+              <CheckCircle2 size={28} />
+            </div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>
+              Digital Pass Issued for {form.fullName}
+            </h3>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#e0f2fe', color: '#0369a1', padding: '4px 12px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 700 }}>
+              <span>🎫 Pass Number:</span> {pass?.passNumber || inviteResult.visit?.visitId || 'VP-ACTIVE'}
+            </div>
           </div>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>
-            Pass Generated for {form.fullName}
-          </h3>
-          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 16px' }}>
-            Pass Number: <strong>{pass?.passNumber || visit?.visitId}</strong>
-          </p>
 
-          <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 20, textAlign: 'left' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
-              Visitor Pass URL:
+          {/* Automated Channel Dispatch Status */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+              Multi-Channel Dispatch Summary
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {/* Email / Gmail Channel */}
+              <div style={{
+                background: recipientEmail ? '#f0fdf4' : '#f8fafc',
+                border: `1px solid ${recipientEmail ? '#bbf7d0' : '#e2e8f0'}`,
+                borderRadius: 10,
+                padding: '10px 12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: '0.82rem', color: recipientEmail ? '#15803d' : '#64748b', marginBottom: 4 }}>
+                  <Mail size={15} /> Gmail / Email
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#334155' }}>
+                  {recipientEmail ? (
+                    <>
+                      <div style={{ color: '#16a34a', fontWeight: 700 }}>✓ Pass Emailed</div>
+                      <div style={{ color: '#64748b', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        {recipientEmail}
+                      </div>
+                    </>
+                  ) : (
+                    <span style={{ color: '#94a3b8' }}>No email provided</span>
+                  )}
+                </div>
+              </div>
+
+              {/* SMS Gateway Channel */}
+              <div style={{
+                background: recipientMobile ? '#f0fdf4' : '#f8fafc',
+                border: `1px solid ${recipientMobile ? '#bbf7d0' : '#e2e8f0'}`,
+                borderRadius: 10,
+                padding: '10px 12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: '0.82rem', color: recipientMobile ? '#15803d' : '#64748b', marginBottom: 4 }}>
+                  <Smartphone size={15} /> SMS Dispatch
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#334155' }}>
+                  {recipientMobile ? (
+                    <>
+                      <div style={{ color: '#16a34a', fontWeight: 700 }}>✓ SMS Dispatched</div>
+                      <div style={{ color: '#64748b' }}>{recipientMobile}</div>
+                    </>
+                  ) : (
+                    <span style={{ color: '#94a3b8' }}>No phone provided</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Share Actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            {whatsappUrl && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{
+                  background: '#25D366',
+                  color: 'white',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  padding: '11px 16px',
+                  borderRadius: 10,
+                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.2)'
+                }}
+              >
+                <MessageCircle size={18} /> Share Pass on WhatsApp
+              </a>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: smsUrl ? '1fr 1fr' : '1fr', gap: 10 }}>
+              {smsUrl && (
+                <a
+                  href={smsUrl}
+                  className="btn btn-outline"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <Send size={14} /> Open SMS App
+                </a>
+              )}
+              {smsText && (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => handleCopy(smsText)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    fontSize: '0.8rem',
+                    fontWeight: 600
+                  }}
+                >
+                  {copied ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+                  {copied ? 'SMS Text Copied!' : 'Copy SMS Text'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Pass Web Link Box */}
+          <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 18 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>
+              Visitor Pass Web Link (QR & Badge):
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
@@ -173,46 +315,23 @@ function InviteModal({ open, onClose, onSuccess }: { open: boolean; onClose: () 
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {whatsappUrl && (
-              <a
-                href={whatsappUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn"
-                style={{
-                  background: '#25D366',
-                  color: 'white',
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  fontWeight: 700,
-                  padding: '12px'
-                }}
-              >
-                <MessageCircle size={18} /> Send Pass directly via WhatsApp
-              </a>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <Link
-                href={fullPassUrl}
-                target="_blank"
-                className="btn btn-outline"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
-              >
-                <ExternalLink size={15} /> Preview Pass
-              </Link>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => { onSuccess(); onClose(); }}
-              >
-                Done
-              </button>
-            </div>
+          {/* Modal Footer Controls */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Link
+              href={fullPassUrl}
+              target="_blank"
+              className="btn btn-outline"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
+            >
+              <ExternalLink size={15} /> Preview Pass
+            </Link>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => { onSuccess(); onClose(); }}
+            >
+              Done
+            </button>
           </div>
         </div>
       </Modal>

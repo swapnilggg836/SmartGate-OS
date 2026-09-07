@@ -10,7 +10,6 @@
     "prisma:push": "prisma db push --accept-data-loss",
     "seed": "tsx prisma/seed.ts",
     "db:setup": "prisma db push --accept-data-loss && tsx prisma/seed.ts"
-
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",
@@ -27,10 +26,14 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
+    "nodemailer": "^10.0.0",
     "prisma": "^5.14.0",
     "socket.io": "^4.7.5",
     "tsx": "^4.10.5",
     "typescript": "^5.4.5",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.1"
   }
 }

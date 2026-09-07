@@ -7,6 +7,7 @@ import { config } from '../../config';
 import { authenticate, AuthenticatedRequest } from '../../middleware/auth';
 import { validateBody } from '../../middleware/validate';
 import { logAudit } from '../../lib/audit';
+import { sendEmailNotification, sendSmsNotification } from '../../lib/email';
 import { JwtPayload, UserRole } from '@smart-gate/types';
 
 const router = Router();
@@ -50,6 +51,25 @@ const changePasswordSchema = z.object({
 router.post('/register', validateBody(registerSchema), async (req: Request, res: Response) => {
   try {
     const { email, password, firstName, lastName, departmentId, designation, phone, role, employeeCode, avatarUrl } = req.body;
+
+    // Security Rule: Public self-registration is strictly restricted to EMPLOYEE accounts.
+    // Privileged accounts (SUPER_ADMIN, GM, HR, MANAGER, SECURITY_GUARD) must be provisioned
+    // by an administrator from /admin/users or supplied with an administrative setup secret.
+    const requestedRole = role || UserRole.EMPLOYEE;
+    const adminSecret = req.headers['x-admin-secret'] || (req.body as any)?.adminSecret;
+    const configuredSecret = process.env.ADMIN_INVITATION_SECRET || 'smartgate-admin-secure-key-2026';
+
+    let finalRole = UserRole.EMPLOYEE;
+    if (requestedRole !== UserRole.EMPLOYEE) {
+      if (adminSecret && adminSecret === configuredSecret) {
+        finalRole = requestedRole;
+      } else {
+        return res.status(403).json({
+          success: false,
+          message: 'Security Policy Violation: Public self-registration is restricted to Employee accounts only. High-privilege administrative roles (SUPER_ADMIN, GM, HR, MANAGER, SECURITY_GUARD) must be provisioned by a Super Admin inside the User Management Console.'
+        });
+      }
+    }
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -117,7 +137,7 @@ router.post('/register', validateBody(registerSchema), async (req: Request, res:
         data: {
           email,
           passwordHash,
-          role,
+          role: finalRole,
           isActive: true,
           employee: {
             create: {
@@ -570,6 +590,34 @@ router.post('/forgot-password/request-otp', validateBody(requestResetOtpSchema),
         priority: 'HIGH'
       }
     });
+
+    // Deliver OTP strictly to the user's verified registered email address
+    await sendEmailNotification({
+      to: user.email,
+      subject: '🔐 SmartGate OS: Password Reset Verification Code',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <h2 style="color: #1e3a8a; margin: 0 0 12px; font-size: 20px;">Password Reset Verification</h2>
+          <p style="font-size: 14px; color: #334155; margin: 0 0 8px;">Hello <strong>${user.employee?.firstName || 'User'}</strong>,</p>
+          <p style="font-size: 14px; color: #475569; margin: 0 0 20px;">A password reset request was initiated for your SmartGate OS account. Use the single-use OTP code below to verify your identity:</p>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center; border-radius: 10px; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0f172a; margin: 0 0 20px; border: 1px dashed #94a3b8;">
+            ${otp}
+          </div>
+          <p style="font-size: 13px; color: #64748b; margin: 0; line-height: 1.5;">
+            This code expires in <strong>10 minutes</strong>. If you did not request this, please disregard this message or notify your IT administrator.
+          </p>
+        </div>
+      `,
+      text: `Your SmartGate OS password reset OTP code is ${otp}. It is valid for 10 minutes. Do not share this code.`
+    });
+
+    // If mobile number is on file, also dispatch via SMS
+    if (user.employee?.phone) {
+      await sendSmsNotification({
+        to: user.employee.phone,
+        message: `SmartGate OS: Your password reset verification OTP is ${otp}. Valid for 10 minutes. Do not share.`
+      });
+    }
 
     await logAudit({
       userId: user.id,

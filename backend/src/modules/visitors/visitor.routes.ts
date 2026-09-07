@@ -7,7 +7,13 @@ import { requireRoles } from '../../middleware/rbac';
 import { validateBody } from '../../middleware/validate';
 import { logAudit } from '../../lib/audit';
 import { emitToUser, emitToRole } from '../../lib/socket';
-import { sendEmailNotification } from '../../lib/email';
+import {
+  sendEmailNotification,
+  sendSmsNotification,
+  generateWhatsAppShareUrl,
+  generateSmsShareUrl,
+  buildVisitorPassEmailTemplate
+} from '../../lib/email';
 import { UserRole } from '@smart-gate/types';
 
 const router = Router();
@@ -125,13 +131,41 @@ async function issueVisitorPass(visitId: string): Promise<any> {
   });
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const passUrl = `${frontendUrl}/visitor-pass/${qrToken}`;
+  const dateFormatted = new Date(visit.visitDate).toLocaleDateString('en-IN', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Channel 1: Gmail / SMTP Rich Email
   if (visit.visitor.email) {
     await sendEmailNotification({
       to: visit.visitor.email,
-      subject: `Your Visitor Pass: ${passNumber}`,
-      html: `<p>Dear ${visit.visitor.fullName},</p><p>Your visit has been approved.</p><p><strong>Pass:</strong> ${passNumber}<br><strong>Host:</strong> ${hostName}<br><strong>Date:</strong> ${new Date(visit.visitDate).toLocaleDateString()}<br><strong>Entry:</strong> ${visit.expectedEntryTime} &mdash; <strong>Exit:</strong> ${visit.expectedExitTime}</p><p><a href="${frontendUrl}/visitor-pass/${qrToken}">View Pass &amp; QR Code</a></p>`,
+      subject: `🎟️ SmartGate Campus Pass: ${passNumber} — Approved`,
+      html: buildVisitorPassEmailTemplate({
+        visitorName: visit.visitor.fullName,
+        passNumber,
+        hostName,
+        visitDate: dateFormatted,
+        entryTime: visit.expectedEntryTime,
+        exitTime: visit.expectedExitTime,
+        purpose: visit.purpose,
+        passUrl
+      }),
+      text: `SmartGate Digital Pass ${passNumber} approved for ${visit.visitor.fullName}. Host: ${hostName}. Open pass: ${passUrl}`
     });
   }
+
+  // Channel 2: SMS Notification
+  if (visit.visitor.mobile) {
+    await sendSmsNotification({
+      to: visit.visitor.mobile,
+      message: `SmartGate Pass ${passNumber} confirmed for visit to ${hostName} on ${dateFormatted}. View your digital QR pass: ${passUrl}. Present at security gate on arrival.`
+    });
+  }
+
   return pass;
 }
 
@@ -660,7 +694,8 @@ router.post('/invite', authenticate, validateBody(inviteSchema), async (req: Aut
     }
 
     let pass: any = null;
-    if (isSelfHost) {
+    const canAutoApprove = isSelfHost || [UserRole.SUPER_ADMIN, UserRole.HR].includes(req.user!.role);
+    if (canAutoApprove) {
       pass = await issueVisitorPass(visit.id);
     } else {
       await prisma.notification.create({
@@ -678,21 +713,95 @@ router.post('/invite', authenticate, validateBody(inviteSchema), async (req: Aut
     const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host') || 'localhost:3000'}`;
     const passUrl = pass ? `${frontendUrl}/visitor-pass/${pass.qrToken}` : `${frontendUrl}/visitor-register`;
     const cleanPhone = (mobile || '').replace(/[^0-9]/g, '');
-    const msg = encodeURIComponent(
-      `Hello ${fullName}!\nYou have been invited to visit SmartGate Campus by ${hostName}.\n` +
-      (pass ? `Pass Number: ${pass.passNumber}\n` : '') +
-      `Date: ${new Date(visitDate).toLocaleDateString('en-IN')}\nTime: ${expectedEntryTime} - ${expectedExitTime}\n` +
-      `View your Digital Gate Pass & QR Code:\n${passUrl}\n\nPlease show this QR at Security on arrival.`
-    );
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${msg}`;
 
-    await logAudit({ userId, action: 'VISITOR_INVITE_CREATED', entity: 'VisitorVisit', entityId: visit.id, newValues: { visitId, visitorName: fullName, hostUserId, purpose }, req });
-    return res.status(201).json({
-      success: true,
-      data: visit,
+    const dateFormatted = new Date(visitDate).toLocaleDateString('en-IN', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+
+    // 1. WhatsApp Share URL
+    const whatsappMessage =
+      `Hello ${fullName}!\n` +
+      `You have been invited to visit SmartGate Campus by ${hostName}.\n` +
+      (pass ? `Pass Number: ${pass.passNumber}\n` : `Visit ID: ${visit.visitId}\n`) +
+      `Date: ${dateFormatted}\n` +
+      `Time: ${expectedEntryTime} - ${expectedExitTime}\n` +
+      `Purpose: ${purpose}\n\n` +
+      `Access your Digital Gate Pass & QR Code:\n${passUrl}\n\n` +
+      `Please present this QR code at Security Gate 1 upon arrival.`;
+
+    const whatsappUrl = generateWhatsAppShareUrl(cleanPhone, whatsappMessage);
+
+    // 2. SMS Text & Native SMS URL
+    const smsText = pass
+      ? `SmartGate Pass ${pass.passNumber}: Hi ${fullName}, your campus pass for visit to ${hostName} on ${dateFormatted} (${expectedEntryTime}) is ready. Open pass: ${passUrl}`
+      : `SmartGate: Hi ${fullName}, you are invited to visit ${hostName} on ${dateFormatted}. Track your visit: ${passUrl}`;
+
+    const smsUrl = generateSmsShareUrl(cleanPhone, smsText);
+
+    // 3. Direct SMS Dispatch
+    let smsSent = false;
+    if (mobile) {
+      smsSent = await sendSmsNotification({
+        to: mobile,
+        message: smsText
+      });
+    }
+
+    // 4. Direct Gmail / SMTP Email Dispatch (if not already dispatched by issueVisitorPass)
+    let emailSent = false;
+    if (email && !pass) {
+      emailSent = await sendEmailNotification({
+        to: email,
+        subject: `🎟️ SmartGate Campus Invitation: ${visit.visitId} — Host: ${hostName}`,
+        html: buildVisitorPassEmailTemplate({
+          visitorName: fullName,
+          passNumber: visit.visitId,
+          hostName,
+          hostDepartment: (visit.department as any)?.name || hostEmp?.department?.name,
+          visitDate: dateFormatted,
+          entryTime: expectedEntryTime,
+          exitTime: expectedExitTime,
+          purpose,
+          passUrl
+        }),
+        text: smsText
+      });
+    } else if (email && pass) {
+      emailSent = true;
+    }
+
+    await logAudit({
+      userId,
+      action: 'VISITOR_INVITE_CREATED',
+      entity: 'VisitorVisit',
+      entityId: visit.id,
+      newValues: { visitId, visitorName: fullName, hostUserId, purpose, emailSent, smsSent },
+      req
+    });
+
+    const responsePayload = {
+      visit,
       pass,
       passUrl,
       whatsappUrl,
+      smsUrl,
+      smsText,
+      emailSent,
+      smsSent,
+      recipientEmail: email || null,
+      recipientMobile: mobile || null
+    };
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        ...visit,
+        ...responsePayload
+      },
+      ...responsePayload
     });
   } catch (err: any) {
     console.error('Invite visitor error:', err);
