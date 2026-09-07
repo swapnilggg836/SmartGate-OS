@@ -173,24 +173,25 @@ router.post('/exit', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRol
       return res.status(404).json({ success: false, message: 'Gate pass not found.' });
     }
 
-    if (gatePass.status !== 'ACTIVE') {
-      return res.status(400).json({ success: false, message: `Gate pass is ${gatePass.status}. Exit cannot be logged.` });
-    }
-
     const currentLog = gatePass.gateLogs[0];
-    if (currentLog && currentLog.exitStatus === 'EXITED') {
-      return res.status(400).json({ success: false, message: 'Exit has already been recorded for this pass.' });
+    if (currentLog && currentLog.exitStatus === 'EXITED' && currentLog.returnStatus === 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee is currently recorded as EXITED. Please record their return first before recording a new exit.'
+      });
     }
 
     const actualExitTime = new Date();
+    const isReExit = Boolean(currentLog && (currentLog.returnStatus === 'RETURNED' || currentLog.returnStatus === 'LATE_RETURN'));
 
     let updatedLog;
-    if (currentLog) {
+    if (currentLog && !isReExit) {
       updatedLog = await prisma.gateLog.update({
         where: { id: currentLog.id },
         data: {
           actualExitTime,
           exitStatus: 'EXITED',
+          returnStatus: 'PENDING',
           securityUserId,
           notes: notes || currentLog.notes
         },
@@ -210,12 +211,20 @@ router.post('/exit', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRol
           exitStatus: 'EXITED',
           returnStatus: 'PENDING',
           securityUserId,
-          notes
+          notes: notes || (isReExit ? 'Re-Exit authorized at security gate' : undefined)
         },
         include: {
           employee: { include: { department: true } },
           gatePass: true
         }
+      });
+    }
+
+    // Ensure GatePass status is ACTIVE
+    if (gatePass.status !== 'ACTIVE') {
+      await prisma.gatePass.update({
+        where: { id: gatePass.id },
+        data: { status: 'ACTIVE' }
       });
     }
 
@@ -418,6 +427,123 @@ router.post('/return', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserR
   } catch (err: any) {
     console.error('Return log error:', err);
     return res.status(500).json({ success: false, message: 'Failed to record gate return.' });
+  }
+});
+
+// POST /api/gate-logs/re-exit (Security Guard authorizes Re-Exit)
+router.post('/re-exit', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRole.HR, UserRole.SUPER_ADMIN), validateBody(exitLogSchema), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { gatePassId, notes } = req.body;
+    const securityUserId = req.user!.userId;
+
+    const gatePass = await prisma.gatePass.findUnique({
+      where: { id: gatePassId },
+      include: {
+        employee: { include: { user: true, department: true } },
+        exitRequest: true,
+        gateLogs: { orderBy: { createdAt: 'desc' }, take: 1 }
+      }
+    });
+
+    if (!gatePass) {
+      return res.status(404).json({ success: false, message: 'Gate pass not found.' });
+    }
+
+    const currentLog = gatePass.gateLogs[0];
+    if (currentLog && currentLog.exitStatus === 'EXITED' && currentLog.returnStatus === 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Employee is currently logged as EXITED. Please record their return before logging a re-exit.'
+      });
+    }
+
+    const actualExitTime = new Date();
+
+    const updatedLog = await prisma.gateLog.create({
+      data: {
+        gatePassId: gatePass.id,
+        employeeId: gatePass.employeeId,
+        approvedExitTime: new Date(gatePass.validFrom),
+        actualExitTime,
+        expectedReturnTime: new Date(gatePass.validUntil),
+        exitStatus: 'EXITED',
+        returnStatus: 'PENDING',
+        securityUserId,
+        notes: notes ? `Re-Exit: ${notes}` : 'Re-Exit authorized at security gate'
+      },
+      include: {
+        employee: { include: { department: true } },
+        gatePass: true
+      }
+    });
+
+    // Ensure GatePass is ACTIVE
+    await prisma.gatePass.update({
+      where: { id: gatePass.id },
+      data: { status: 'ACTIVE' }
+    });
+
+    // Update Attendance status to ON_EXIT_PERMISSION
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    await prisma.attendance.upsert({
+      where: {
+        employeeId_date: {
+          employeeId: gatePass.employeeId,
+          date: today
+        }
+      },
+      update: { status: 'ON_EXIT_PERMISSION' },
+      create: {
+        employeeId: gatePass.employeeId,
+        date: today,
+        checkInTime: new Date(),
+        status: 'ON_EXIT_PERMISSION'
+      }
+    });
+
+    const timeFormatted = actualExitTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    await prisma.notification.create({
+      data: {
+        userId: gatePass.employee.userId,
+        title: '🔄 Re-Exit Logged at Gate',
+        message: `Your re-exit was logged at ${timeFormatted}. Expected return: ${gatePass.exitRequest.expectedReturnTime}.`,
+        type: 'GATE_EXIT_LOGGED',
+        metadata: JSON.stringify({ passNumber: gatePass.passNumber, exitTime: actualExitTime, isReExit: true })
+      }
+    });
+
+    emitToUser(gatePass.employee.userId, 'gate:exit_logged', {
+      passNumber: gatePass.passNumber,
+      actualExitTime,
+      isReExit: true
+    });
+
+    emitBroadcast('gate:activity_update', {
+      type: 'RE_EXIT',
+      employeeName: `${gatePass.employee.firstName} ${gatePass.employee.lastName}`,
+      passNumber: gatePass.passNumber,
+      timestamp: actualExitTime
+    });
+
+    await logAudit({
+      userId: securityUserId,
+      action: 'SECURITY_ALLOW_RE_EXIT',
+      entity: 'GateLog',
+      entityId: updatedLog.id,
+      newValues: { gatePassId, actualExitTime },
+      req
+    });
+
+    return res.json({
+      success: true,
+      message: `Re-Exit recorded for ${gatePass.employee.firstName} ${gatePass.employee.lastName}.`,
+      data: updatedLog
+    });
+  } catch (err: any) {
+    console.error('Re-exit log error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to record re-exit.' });
   }
 });
 

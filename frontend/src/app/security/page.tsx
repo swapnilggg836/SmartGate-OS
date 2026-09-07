@@ -7,7 +7,8 @@ import AppLayout from '@/components/layout/AppLayout';
 import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import {
   Shield, Search, CheckCircle2, Clock, AlertTriangle, AlertCircle,
-  Users, UserX, UserCheck, Flame, RefreshCw, ArrowRight, UserPlus, LogOut, Camera, QrCode
+  Users, UserX, UserCheck, Flame, RefreshCw, ArrowRight, UserPlus, LogOut, Camera, QrCode,
+  RotateCcw, LogIn, Eye
 } from 'lucide-react';
 import { QRScannerModal } from '@/components/qr/QRScannerModal';
 import Link from 'next/link';
@@ -127,6 +128,34 @@ export default function SecurityPage() {
     } finally {
       setActioning(false);
     }
+  };
+
+  const allowReExit = async (id: string) => {
+    setActioning(true);
+    setActionMsg(null);
+    try {
+      const res = await api.post('/security/re-exit', { gatePassId: id, notes: `Gate: ${selectedGate} | Shift: ${selectedShift}` });
+      setActionMsg({ type: 'success', text: res.data?.message || 'Re-Exit recorded successfully! Employee authorized to exit again.' });
+      setVerifyResult(null);
+      setSearch('');
+      loadData();
+    } catch (err: any) {
+      setActionMsg({ type: 'error', text: err.response?.data?.message || 'Failed to record re-exit.' });
+    } finally {
+      setActioning(false);
+    }
+  };
+
+  const getPassMovementState = (p: any): 'INSIDE' | 'OUTSIDE' | 'RETURNED' => {
+    if (!p) return 'INSIDE';
+    const latestLog = p.gateLogs?.[0];
+    if (latestLog?.exitStatus === 'EXITED' && latestLog?.returnStatus === 'PENDING') {
+      return 'OUTSIDE';
+    }
+    if (latestLog?.returnStatus === 'RETURNED' || latestLog?.returnStatus === 'LATE_RETURN' || p.status === 'USED') {
+      return 'RETURNED';
+    }
+    return 'INSIDE';
   };
 
   if (loading) return <AppLayout><PageLoader /></AppLayout>;
@@ -343,32 +372,61 @@ export default function SecurityPage() {
                           </div>
 
                           {/* Action Buttons */}
-                          {verifyResult.status === 'ACTIVE' && (
-                            <button
-                              className="btn btn-primary"
-                              style={{ width: '100%', padding: '14px', fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                              onClick={() => allowExit(verifyResult.id)}
-                              disabled={actioning}
-                            >
-                              {actioning ? <Spinner white size="sm" /> : <LogOut size={18} />}
-                              ALLOW EXIT — Record Actual Exit Time ({selectedGate})
-                            </button>
-                          )}
+                          {(() => {
+                            const vState = getPassMovementState(verifyResult);
+                            return (
+                              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                {vState === 'INSIDE' && (
+                                  <button
+                                    className="btn btn-primary"
+                                    style={{ flex: 1, minWidth: 220, padding: '14px', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                                    onClick={() => allowExit(verifyResult.id)}
+                                    disabled={actioning}
+                                  >
+                                    {actioning ? <Spinner white size="sm" /> : <LogOut size={18} />}
+                                    ALLOW EXIT — Record Departure ({selectedGate})
+                                  </button>
+                                )}
 
-                          {verifyResult.status === 'USED' && (
-                            <button
-                              className="btn btn-success"
-                              style={{ width: '100%', padding: '14px', fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                              onClick={() => markReturned(verifyResult.id)}
-                              disabled={actioning}
-                            >
-                              {actioning ? <Spinner white size="sm" /> : <CheckCircle2 size={18} />}
-                              MARK AS RETURNED — Record Return Time ({selectedGate})
-                            </button>
-                          )}
+                                {vState === 'OUTSIDE' && (
+                                  <button
+                                    className="btn btn-warning"
+                                    style={{ flex: 1, minWidth: 220, padding: '14px', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#d97706', color: '#fff' }}
+                                    onClick={() => markReturned(verifyResult.id)}
+                                    disabled={actioning}
+                                  >
+                                    {actioning ? <Spinner white size="sm" /> : <LogIn size={18} />}
+                                    RECORD RE-IN — Physical Entry ({selectedGate})
+                                  </button>
+                                )}
+
+                                {vState === 'RETURNED' && (
+                                  <div style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}>
+                                    <button
+                                      className="btn btn-primary"
+                                      style={{ flex: 1, minWidth: 200, padding: '14px', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                                      onClick={() => allowReExit(verifyResult.id)}
+                                      disabled={actioning}
+                                    >
+                                      {actioning ? <Spinner white size="sm" /> : <RotateCcw size={18} />}
+                                      ALLOW RE-EXIT — Step Out Again ({selectedGate})
+                                    </button>
+                                    <button
+                                      className="btn btn-outline"
+                                      style={{ padding: '14px 20px', fontWeight: 700 }}
+                                      onClick={() => markReturned(verifyResult.id)}
+                                      disabled={actioning}
+                                    >
+                                      <LogIn size={16} /> Record Re-In
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {verifyResult.status === 'EXPIRED' && (
-                            <div className="alert alert-warning" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="alert alert-warning" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
                               <AlertTriangle size={18} />
                               <span>This gate pass is expired. Direct employee to request a new exit permission or contact manager.</span>
                             </div>
@@ -480,27 +538,68 @@ export default function SecurityPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {passes.map((p: any) => (
-                      <tr key={p.id}>
-                        <td className="font-mono" style={{ color: 'var(--blue-700)', fontWeight: 800 }}>{p.passNumber}</td>
-                        <td style={{ fontWeight: 600 }}>{p.employee?.firstName} {p.employee?.lastName}</td>
-                        <td className="font-mono">{p.employee?.employeeCode}</td>
-                        <td>{p.employee?.department?.name || '—'}</td>
-                        <td className="font-mono">{p.exitRequest?.exitTime} – {p.exitRequest?.expectedReturnTime}</td>
-                        <td>{p.exitRequest?.destination}</td>
-                        <td><span className={`badge ${statusBadgeClass(p.status)}`}>{statusLabel(p.status)}</span></td>
-                        <td className="font-mono">{p.gateLogs?.[0]?.actualExitTime ? fmtTime(p.gateLogs[0].actualExitTime) : '—'}</td>
-                        <td className="font-mono">{p.gateLogs?.[0]?.actualReturnTime ? fmtTime(p.gateLogs[0].actualReturnTime) : '—'}</td>
-                        <td>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            onClick={() => { setSearch(p.passNumber); setActiveTab('verify'); verify(p.passNumber); }}
-                          >
-                            Verify
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {passes.map((p: any) => {
+                      const mState = getPassMovementState(p);
+                      return (
+                        <tr key={p.id}>
+                          <td className="font-mono" style={{ color: 'var(--blue-700)', fontWeight: 800 }}>{p.passNumber}</td>
+                          <td style={{ fontWeight: 600 }}>{p.employee?.firstName} {p.employee?.lastName}</td>
+                          <td className="font-mono">{p.employee?.employeeCode}</td>
+                          <td>{p.employee?.department?.name || '—'}</td>
+                          <td className="font-mono">{p.exitRequest?.exitTime} – {p.exitRequest?.expectedReturnTime}</td>
+                          <td>{p.exitRequest?.destination}</td>
+                          <td>
+                            {mState === 'OUTSIDE' && <span className="badge badge-amber" style={{ fontWeight: 700 }}>🟡 Outside</span>}
+                            {mState === 'RETURNED' && <span className="badge badge-blue" style={{ fontWeight: 700 }}>🔵 Returned</span>}
+                            {mState === 'INSIDE' && <span className="badge badge-green" style={{ fontWeight: 700 }}>🟢 Inside</span>}
+                          </td>
+                          <td className="font-mono">{p.gateLogs?.[0]?.actualExitTime ? fmtTime(p.gateLogs[0].actualExitTime) : '—'}</td>
+                          <td className="font-mono">{p.gateLogs?.[0]?.actualReturnTime ? fmtTime(p.gateLogs[0].actualReturnTime) : '—'}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <button
+                                className="btn btn-outline btn-sm"
+                                onClick={() => { setSearch(p.passNumber); setActiveTab('verify'); verify(p.passNumber); }}
+                                title="Verify Pass in Scanner"
+                              >
+                                Verify
+                              </button>
+                              {mState === 'INSIDE' && (
+                                <button
+                                  className="btn btn-sm btn-success"
+                                  onClick={() => allowExit(p.id)}
+                                  disabled={actioning}
+                                  title="Allow Exit Departure"
+                                >
+                                  Exit
+                                </button>
+                              )}
+                              {mState === 'OUTSIDE' && (
+                                <button
+                                  className="btn btn-sm"
+                                  onClick={() => markReturned(p.id)}
+                                  disabled={actioning}
+                                  style={{ background: '#d97706', color: '#fff', fontWeight: 700 }}
+                                  title="Record Re-In Entry"
+                                >
+                                  Re-In
+                                </button>
+                              )}
+                              {mState === 'RETURNED' && (
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => allowReExit(p.id)}
+                                  disabled={actioning}
+                                  title="Allow Re-Exit"
+                                >
+                                  Re-Exit
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

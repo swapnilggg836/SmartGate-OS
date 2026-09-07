@@ -101,21 +101,35 @@ router.get('/today', authenticate, requireRoles(UserRole.SECURITY_GUARD, UserRol
 
     const passes = await prisma.gatePass.findMany({
       where: {
-        createdAt: {
-          gte: today,
-          lt: tomorrow
-        }
+        OR: [
+          { createdAt: { gte: today, lt: tomorrow } },
+          { validFrom: { gte: today, lt: tomorrow } },
+          { status: 'ACTIVE' },
+          {
+            gateLogs: {
+              some: {
+                createdAt: { gte: today, lt: tomorrow }
+              }
+            }
+          }
+        ]
       },
       include: {
         employee: {
           include: {
-            department: true
+            department: true,
+            user: { select: { email: true, role: true } }
           }
         },
-        exitRequest: true,
+        exitRequest: {
+          include: {
+            approvals: {
+              include: { approver: { include: { employee: true } } }
+            }
+          }
+        },
         gateLogs: {
-          orderBy: { createdAt: 'desc' },
-          take: 1
+          orderBy: { createdAt: 'desc' }
         }
       },
       orderBy: { createdAt: 'desc' }

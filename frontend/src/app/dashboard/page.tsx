@@ -9,8 +9,11 @@ import { PageLoader, Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import {
   Calendar, Clock, FileText, QrCode, Users, ClipboardList,
-  Shield, AlertTriangle, CheckCircle2, XCircle, Plus, TrendingUp
+  Shield, AlertTriangle, CheckCircle2, XCircle, Plus, TrendingUp,
+  Eye, LogOut, LogIn, RotateCcw, Search, Check, ExternalLink,
+  LayoutGrid, List
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 // =============================================
 // EMPLOYEE DASHBOARD
@@ -444,6 +447,12 @@ function SecurityDashboard() {
   const [search, setSearch] = useState('');
   const [verifyResult, setVerifyResult] = useState<any>(null);
   const [verifying, setVerifying] = useState(false);
+  const [selectedPass, setSelectedPass] = useState<any | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [filterTab, setFilterTab] = useState<'ALL' | 'INSIDE' | 'OUTSIDE' | 'RETURNED'>('ALL');
+  const [tableFilter, setTableFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   const load = () => {
     api.get('/gate-passes/today').then(r => {
@@ -453,162 +462,1044 @@ function SecurityDashboard() {
 
   useEffect(() => { load(); }, []);
 
-  const verify = async () => {
-    if (!search.trim()) return;
+  // Helper to determine exact real-time campus movement status
+  const getPassMovementState = (p: any): 'INSIDE' | 'OUTSIDE' | 'RETURNED' => {
+    if (!p) return 'INSIDE';
+    const latestLog = p.gateLogs?.[0];
+    if (latestLog?.exitStatus === 'EXITED' && latestLog?.returnStatus === 'PENDING') {
+      return 'OUTSIDE';
+    }
+    if (latestLog?.returnStatus === 'RETURNED' || latestLog?.returnStatus === 'LATE_RETURN' || p.status === 'USED') {
+      return 'RETURNED';
+    }
+    return 'INSIDE';
+  };
+
+  const verify = async (queryToUse?: string) => {
+    const q = (queryToUse !== undefined ? queryToUse : search).trim();
+    if (!q) return;
     setVerifying(true);
+    setSearch(q);
     try {
-      const res = await api.post('/gate-passes/verify', { query: search.trim() });
+      const res = await api.post('/gate-passes/verify', { query: q });
       setVerifyResult(res.data?.data);
+      // Scroll to verify section smoothly
+      if (typeof window !== 'undefined') {
+        const verifyElem = document.getElementById('gate-verify-card');
+        if (verifyElem) verifyElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     } catch (err: any) {
-      setVerifyResult({ error: err.response?.data?.message || 'Not found' });
+      setVerifyResult({ error: err.response?.data?.message || 'Pass not found or not approved for today.' });
     } finally {
       setVerifying(false);
     }
   };
 
   const allowExit = async (gatePassId: string) => {
-    await api.post('/security/exit', { gatePassId });
-    load();
-    setVerifyResult(null);
+    setActionLoadingId(gatePassId);
+    try {
+      const res = await api.post('/security/exit', { gatePassId });
+      setBanner({ type: 'success', message: res.data?.message || 'Gate Exit recorded successfully. Departure logged.' });
+      await load();
+      setVerifyResult(null);
+      if (selectedPass?.id === gatePassId) setSelectedPass(null);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: err.response?.data?.message || 'Failed to record exit.' });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   const markReturned = async (gatePassId: string) => {
-    await api.post('/security/return', { gatePassId });
-    load();
-    setVerifyResult(null);
+    setActionLoadingId(gatePassId);
+    try {
+      const res = await api.post('/security/return', { gatePassId });
+      setBanner({ type: 'success', message: res.data?.message || 'Gate Return (Re-In) recorded successfully. Entry logged.' });
+      await load();
+      setVerifyResult(null);
+      if (selectedPass?.id === gatePassId) setSelectedPass(null);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: err.response?.data?.message || 'Failed to record return.' });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
+
+  const allowReExit = async (gatePassId: string) => {
+    setActionLoadingId(gatePassId);
+    try {
+      const res = await api.post('/security/re-exit', { gatePassId });
+      setBanner({ type: 'success', message: res.data?.message || 'Re-Exit recorded successfully. Employee authorized to step out again.' });
+      await load();
+      setVerifyResult(null);
+      if (selectedPass?.id === gatePassId) setSelectedPass(null);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: err.response?.data?.message || 'Failed to record re-exit.' });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const insideCount = passes.filter(p => getPassMovementState(p) === 'INSIDE').length;
+  const outsideCount = passes.filter(p => getPassMovementState(p) === 'OUTSIDE').length;
+  const returnedCount = passes.filter(p => getPassMovementState(p) === 'RETURNED').length;
+
+  const filteredPasses = passes.filter(p => {
+    const st = getPassMovementState(p);
+    if (filterTab !== 'ALL' && st !== filterTab) return false;
+    if (!tableFilter.trim()) return true;
+    const q = tableFilter.toLowerCase();
+    const empName = `${p.employee?.firstName || ''} ${p.employee?.lastName || ''}`.toLowerCase();
+    const empCode = (p.employee?.employeeCode || '').toLowerCase();
+    const passNum = (p.passNumber || '').toLowerCase();
+    const dept = (p.employee?.department?.name || '').toLowerCase();
+    return empName.includes(q) || empCode.includes(q) || passNum.includes(q) || dept.includes(q);
+  });
 
   if (loading) return <PageLoader />;
 
   return (
     <div className="space-y-4">
+      {/* Security Header */}
       <div className="card">
         <div className="card-body">
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Shield size={20} style={{ color: 'var(--blue-700)' }} /> Security Gate Dashboard
-          </h2>
-          <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 2 }}>
-            Logged in as: {user?.employee?.firstName} {user?.employee?.lastName} · Security Guard
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                <Shield size={20} style={{ color: 'var(--blue-700)' }} /> Security Gate Dashboard
+              </h2>
+              <p style={{ color: 'var(--slate-500)', fontSize: '0.8125rem', marginTop: 4, marginBottom: 0 }}>
+                Logged in as: <strong>{user?.employee?.firstName} {user?.employee?.lastName}</strong> · Security Guard (Gate 1)
+              </p>
+            </div>
+            <button className="btn btn-outline btn-sm" onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock size={14} /> Refresh Passes
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Action Banner */}
+      {banner && (
+        <div className={`alert ${banner.type === 'success' ? 'alert-success' : 'alert-error'}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
+            {banner.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+            <span>{banner.message}</span>
+          </div>
+          <button onClick={() => setBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: 'inherit' }}>✕</button>
+        </div>
+      )}
+
       {/* Verify Panel */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title"><QrCode size={15} /> Verify Gate Pass</h3>
+      <div id="gate-verify-card" className="card">
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="card-title" style={{ margin: 0 }}><QrCode size={15} /> Verify Gate Pass</h3>
+          <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>1-Click Verify from table below or enter code</span>
         </div>
         <div className="card-body">
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <input
               className="form-control"
-              placeholder="Enter Gate Pass ID (e.g. GP-2026-00125) or Employee ID (e.g. EMP1001)"
+              placeholder="Enter Gate Pass ID (e.g. GP-2026-00016) or Employee Code (e.g. EMP1024)"
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && verify()}
-              style={{ flex: 1 }}
+              style={{ flex: '1 1 260px' }}
             />
-            <button className="btn btn-primary" onClick={verify} disabled={verifying}>
+            <button className="btn btn-primary" onClick={() => verify()} disabled={verifying} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {verifying ? <Spinner white size="sm" /> : <Shield size={15} />}
               Verify
             </button>
+            {verifyResult && (
+              <button className="btn btn-ghost" onClick={() => { setVerifyResult(null); setSearch(''); }}>
+                Clear
+              </button>
+            )}
           </div>
 
           {verifyResult && (
             <div style={{ marginTop: 16 }}>
               {verifyResult.error ? (
                 <div className="alert alert-error"><AlertTriangle size={15} /><span>{verifyResult.error}</span></div>
-              ) : (
-                <div className="card" style={{ border: '2px solid var(--blue-300)' }}>
-                  <div style={{ background: 'var(--blue-700)', color: 'white', padding: '12px 20px', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', display: 'flex', justifyContent: 'space-between' }}>
-                    <strong>{verifyResult.passNumber}</strong>
-                    <span className={`badge ${statusBadgeClass(verifyResult.status)}`} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white' }}>{statusLabel(verifyResult.status)}</span>
-                  </div>
-                  <div style={{ padding: '16px 20px' }}>
-                    {[
-                      ['Employee', `${verifyResult.employee?.firstName} ${verifyResult.employee?.lastName}`],
-                      ['Employee ID', verifyResult.employee?.employeeCode],
-                      ['Department', verifyResult.employee?.department?.name],
-                      ['Exit Date', fmtDate(verifyResult.exitRequest?.exitDate)],
-                      ['Exit Time', verifyResult.exitRequest?.exitTime],
-                      ['Expected Return', verifyResult.exitRequest?.expectedReturnTime],
-                      ['Destination', verifyResult.exitRequest?.destination],
-                      ['Reason', verifyResult.exitRequest?.reason],
-                    ].map(([label, value]) => (
-                      <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px dashed var(--slate-100)', fontSize: '0.8125rem' }}>
-                        <span style={{ color: 'var(--slate-500)' }}>{label}</span>
-                        <span style={{ fontWeight: 600, color: 'var(--slate-800)' }}>{value || '—'}</span>
+              ) : (() => {
+                const vState = getPassMovementState(verifyResult);
+                return (
+                  <div className="card" style={{ border: '2px solid var(--blue-400)', boxShadow: '0 8px 24px rgba(37, 99, 235, 0.12)' }}>
+                    <div style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)', color: 'white', padding: '14px 20px', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <QrCode size={20} />
+                        <strong style={{ fontSize: '1.05rem', letterSpacing: '0.04em' }}>{verifyResult.passNumber}</strong>
                       </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                      <span style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--green-50)', border: '1px solid var(--green-100)', color: 'var(--green-700)', fontSize: '0.75rem', fontWeight: 700 }}>Manager: APPROVED</span>
-                      {verifyResult.exitRequest?.requiresHrApproval && (
-                        <span style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--green-50)', border: '1px solid var(--green-100)', color: 'var(--green-700)', fontSize: '0.75rem', fontWeight: 700 }}>HR: APPROVED</span>
-                      )}
+                      <div>
+                        {vState === 'OUTSIDE' && (
+                          <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: 'none', fontWeight: 800, fontSize: '0.78rem' }}>
+                            🟡 CURRENTLY OUTSIDE
+                          </span>
+                        )}
+                        {vState === 'RETURNED' && (
+                          <span className="badge" style={{ background: '#dbeafe', color: '#1d4ed8', border: 'none', fontWeight: 800, fontSize: '0.78rem' }}>
+                            🔵 RETURNED TO CAMPUS
+                          </span>
+                        )}
+                        {vState === 'INSIDE' && (
+                          <span className="badge" style={{ background: '#dcfce7', color: '#15803d', border: 'none', fontWeight: 800, fontSize: '0.78rem' }}>
+                            🟢 INSIDE (READY FOR EXIT)
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                      {verifyResult.status === 'ACTIVE' && (
-                        <button className="btn btn-primary btn-full" style={{ padding: '11px 0' }} onClick={() => allowExit(verifyResult.id)}>
-                          ✅ Allow Exit — Record Exit Time
+
+                    <div style={{ padding: '18px 20px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px 20px', marginBottom: 14 }}>
+                        {[
+                          ['Employee', `${verifyResult.employee?.firstName} ${verifyResult.employee?.lastName}`],
+                          ['Employee Code', verifyResult.employee?.employeeCode],
+                          ['Department', verifyResult.employee?.department?.name],
+                          ['Approved Exit Date', fmtDate(verifyResult.exitRequest?.exitDate)],
+                          ['Allowed Exit Window', `${verifyResult.exitRequest?.exitTime} → ${verifyResult.exitRequest?.expectedReturnTime}`],
+                          ['Destination', verifyResult.exitRequest?.destination],
+                          ['Reason for Leaving', verifyResult.exitRequest?.reason],
+                        ].map(([label, value]) => (
+                          <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px dashed var(--slate-100)', fontSize: '0.8125rem' }}>
+                            <span style={{ color: 'var(--slate-500)' }}>{label}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--slate-800)' }}>{value || '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Approvals status badges */}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                        <span style={{ padding: '5px 10px', borderRadius: 6, background: '#dcfce7', border: '1px solid #bbf7d0', color: '#16a34a', fontSize: '0.75rem', fontWeight: 700 }}>
+                          ✓ Manager: APPROVED
+                        </span>
+                        {verifyResult.exitRequest?.requiresHrApproval && (
+                          <span style={{ padding: '5px 10px', borderRadius: 6, background: '#dcfce7', border: '1px solid #bbf7d0', color: '#16a34a', fontSize: '0.75rem', fontWeight: 700 }}>
+                            ✓ HR Director: APPROVED
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Dynamic 1-Click Action Buttons */}
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {vState === 'INSIDE' && (
+                          <button
+                            className="btn btn-success"
+                            style={{ flex: '1 1 200px', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 800, fontSize: '0.92rem', background: '#16a34a', color: '#fff' }}
+                            onClick={() => allowExit(verifyResult.id)}
+                            disabled={actionLoadingId === verifyResult.id}
+                          >
+                            {actionLoadingId === verifyResult.id ? <Spinner white size="sm" /> : <LogOut size={18} />}
+                            ✅ Allow Exit — Record Physical Departure
+                          </button>
+                        )}
+
+                        {vState === 'OUTSIDE' && (
+                          <button
+                            className="btn btn-warning"
+                            style={{ flex: '1 1 200px', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 800, fontSize: '0.92rem', background: '#d97706', color: '#fff' }}
+                            onClick={() => markReturned(verifyResult.id)}
+                            disabled={actionLoadingId === verifyResult.id}
+                          >
+                            {actionLoadingId === verifyResult.id ? <Spinner white size="sm" /> : <LogIn size={18} />}
+                            ↩️ Record Re-In — Check In to Campus
+                          </button>
+                        )}
+
+                        {vState === 'RETURNED' && (
+                          <div style={{ display: 'flex', gap: 10, flex: '1 1 240px', flexWrap: 'wrap' }}>
+                            <button
+                              className="btn btn-primary"
+                              style={{ flex: 1, minWidth: 180, padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 800, fontSize: '0.92rem', background: '#2563eb', color: '#fff' }}
+                              onClick={() => allowReExit(verifyResult.id)}
+                              disabled={actionLoadingId === verifyResult.id}
+                            >
+                              {actionLoadingId === verifyResult.id ? <Spinner white size="sm" /> : <RotateCcw size={18} />}
+                              🔄 Allow Re-Exit — Step Out Again
+                            </button>
+                            <button
+                              className="btn btn-outline"
+                              style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+                              onClick={() => markReturned(verifyResult.id)}
+                              disabled={actionLoadingId === verifyResult.id}
+                              title="Record Re-In entry"
+                            >
+                              {actionLoadingId === verifyResult.id ? <Spinner size="sm" /> : <LogIn size={16} />}
+                              ↩️ Record Re-In
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          className="btn btn-outline"
+                          style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+                          onClick={() => setSelectedPass(verifyResult)}
+                        >
+                          <Eye size={16} /> View Digital Pass & QR
                         </button>
-                      )}
-                      {verifyResult.status === 'USED' && (
-                        <button className="btn btn-success btn-full" style={{ padding: '11px 0' }} onClick={() => markReturned(verifyResult.id)}>
-                          🔄 Mark as Returned
-                        </button>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>
       </div>
 
-      {/* Today's Gate Passes */}
+      {/* Today's Gate Passes Section */}
       <div className="card">
-        <div className="card-header">
-          <h3 className="card-title"><Clock size={15} /> Today's Approved Gate Passes</h3>
-          <span className="badge badge-blue">{passes.length} passes</span>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 className="card-title" style={{ margin: 0 }}><Clock size={16} /> Today's Approved Gate Passes</h3>
+            <span className="badge badge-blue">{filteredPasses.length} / {passes.length} passes</span>
+          </div>
+
+          {/* Right side controls: Filter Tabs + View Mode Toggle */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Filter Chips - swipeable horizontally on mobile */}
+            <div style={{
+              display: 'flex',
+              gap: 6,
+              overflowX: 'auto',
+              maxWidth: '100%',
+              paddingBottom: 2,
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none'
+            }}>
+              <button
+                className={`btn btn-sm ${filterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setFilterTab('ALL')}
+                style={{ fontSize: '0.75rem', padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap' }}
+              >
+                All ({passes.length})
+              </button>
+              <button
+                className={`btn btn-sm ${filterTab === 'INSIDE' ? 'btn-success' : 'btn-ghost'}`}
+                onClick={() => setFilterTab('INSIDE')}
+                style={{ fontSize: '0.75rem', padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap' }}
+              >
+                🟢 Inside ({insideCount})
+              </button>
+              <button
+                className={`btn btn-sm ${filterTab === 'OUTSIDE' ? 'btn-warning' : 'btn-ghost'}`}
+                onClick={() => setFilterTab('OUTSIDE')}
+                style={{ fontSize: '0.75rem', padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap', background: filterTab === 'OUTSIDE' ? '#d97706' : undefined, color: filterTab === 'OUTSIDE' ? '#fff' : undefined }}
+              >
+                🟡 Outside ({outsideCount})
+              </button>
+              <button
+                className={`btn btn-sm ${filterTab === 'RETURNED' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setFilterTab('RETURNED')}
+                style={{ fontSize: '0.75rem', padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap' }}
+              >
+                🔵 Returned ({returnedCount})
+              </button>
+            </div>
+
+            {/* View Mode Switcher (Cards vs Table) */}
+            <div style={{ display: 'inline-flex', background: 'var(--slate-100)', padding: 2, borderRadius: 8, border: '1px solid var(--slate-200)' }}>
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                style={{
+                  padding: '4px 9px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: viewMode === 'cards' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'cards' ? 'var(--blue-700)' : 'var(--slate-600)',
+                  boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+                title="Cards view (Recommended for mobile/touch)"
+              >
+                <LayoutGrid size={13} /> Cards
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                style={{
+                  padding: '4px 9px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: viewMode === 'table' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'table' ? 'var(--blue-700)' : 'var(--slate-600)',
+                  boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+                title="Table View (Best for desktop monitors)"
+              >
+                <List size={13} /> Table
+              </button>
+            </div>
+          </div>
         </div>
-        {passes.length === 0 ? (
+
+        {/* Search filter input inside card */}
+        {passes.length > 0 && (
+          <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Search size={14} style={{ color: '#64748b' }} />
+            <input
+              type="text"
+              placeholder="Search by employee name, badge ID, or pass number..."
+              value={tableFilter}
+              onChange={e => setTableFilter(e.target.value)}
+              style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.84rem', width: '100%', color: '#334155' }}
+            />
+            {tableFilter && (
+              <button onClick={() => setTableFilter('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.8rem' }}>✕</button>
+            )}
+          </div>
+        )}
+
+        {filteredPasses.length === 0 ? (
           <div className="empty-state">
             <Shield size={36} />
-            <h4>No Passes Today</h4>
-            <p>No approved gate passes for today.</p>
+            <h4>No Passes Match Your Selection</h4>
+            <p>{passes.length === 0 ? "Approved employee exit passes for today will appear here automatically." : "Try switching filter tabs or clearing the search."}</p>
+          </div>
+        ) : viewMode === 'cards' ? (
+          /* ========================================================
+             TOUCH-FRIENDLY RESPONSIVE CARDS VIEW (DEFAULT / MOBILE)
+             ======================================================== */
+          <div style={{ padding: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+            {filteredPasses.map((p: any) => {
+              const mState = getPassMovementState(p);
+              const latestLog = p.gateLogs?.[0];
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: 12,
+                    border: mState === 'OUTSIDE' ? '2px solid #f59e0b' : mState === 'RETURNED' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12
+                  }}
+                >
+                  {/* Top: Pass Number + Status Badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => verify(p.passNumber)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                      title="Click to Verify Pass in Scanner"
+                    >
+                      <span className="font-mono" style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--blue-700)', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+                        {p.passNumber}
+                      </span>
+                    </button>
+
+                    <div>
+                      {mState === 'OUTSIDE' && (
+                        <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 800, fontSize: '0.75rem', padding: '4px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          🟡 OUTSIDE (ON PASS)
+                        </span>
+                      )}
+                      {mState === 'RETURNED' && (
+                        <span className="badge" style={{ background: '#dbeafe', color: '#1d4ed8', border: '1px solid #bfdbfe', fontWeight: 800, fontSize: '0.75rem', padding: '4px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          🔵 RETURNED
+                        </span>
+                      )}
+                      {mState === 'INSIDE' && (
+                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', fontWeight: 800, fontSize: '0.75rem', padding: '4px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          🟢 INSIDE (READY)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Employee Name and Info */}
+                  <div>
+                    <div style={{ fontSize: '1.08rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.25 }}>
+                      {p.employee?.firstName} {p.employee?.lastName}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, marginTop: 3 }}>
+                      <span style={{ color: 'var(--blue-700)', fontWeight: 700 }}>{p.employee?.employeeCode}</span> · {p.employee?.department?.name || 'Department'}
+                    </div>
+                  </div>
+
+                  {/* Exit Window & Details Pill Box */}
+                  <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '10px 12px', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ color: '#64748b', fontWeight: 600 }}>Exit Window:</span>
+                      <span style={{ fontWeight: 800, color: '#0f172a' }}>{p.exitRequest?.exitTime || '—'} → {p.exitRequest?.expectedReturnTime || '—'}</span>
+                    </div>
+                    {p.exitRequest?.destination && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Destination:</span>
+                        <span style={{ color: '#334155', fontWeight: 600 }}>{p.exitRequest.destination}</span>
+                      </div>
+                    )}
+                    {latestLog?.actualExitTime && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Actual Exit:</span>
+                        <span style={{ color: '#16a34a', fontWeight: 800 }}>{fmtTime(latestLog.actualExitTime)}</span>
+                      </div>
+                    )}
+                    {latestLog?.actualReturnTime && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#64748b', fontWeight: 600 }}>Actual Return:</span>
+                        <span style={{ color: '#2563eb', fontWeight: 800 }}>{fmtTime(latestLog.actualReturnTime)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* BIG, PROMINENT 46px TOUCH BUTTON */}
+                  <div>
+                    {mState === 'INSIDE' && (
+                      <button
+                        className="btn btn-success"
+                        onClick={() => allowExit(p.id)}
+                        disabled={actionLoadingId === p.id}
+                        style={{
+                          width: '100%',
+                          minHeight: 46,
+                          fontSize: '0.92rem',
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          background: '#16a34a',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 8,
+                          boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)'
+                        }}
+                      >
+                        {actionLoadingId === p.id ? <Spinner white size="sm" /> : <LogOut size={18} />}
+                        🟢 ALLOW EXIT (Physical Departure)
+                      </button>
+                    )}
+
+                    {mState === 'OUTSIDE' && (
+                      <button
+                        className="btn btn-warning"
+                        onClick={() => markReturned(p.id)}
+                        disabled={actionLoadingId === p.id}
+                        style={{
+                          width: '100%',
+                          minHeight: 46,
+                          fontSize: '0.92rem',
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          background: '#d97706',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 8,
+                          boxShadow: '0 2px 6px rgba(217, 119, 6, 0.3)'
+                        }}
+                      >
+                        {actionLoadingId === p.id ? <Spinner white size="sm" /> : <LogIn size={18} />}
+                        🟡 RECORD RE-IN (Campus Entry)
+                      </button>
+                    )}
+
+                    {mState === 'RETURNED' && (
+                      <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => allowReExit(p.id)}
+                          disabled={actionLoadingId === p.id}
+                          style={{
+                            flex: 1,
+                            minHeight: 46,
+                            fontSize: '0.9rem',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            background: '#2563eb',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: 8,
+                            boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)'
+                          }}
+                        >
+                          {actionLoadingId === p.id ? <Spinner white size="sm" /> : <RotateCcw size={16} />}
+                          🔄 ALLOW RE-EXIT
+                        </button>
+                        <button
+                          className="btn btn-outline"
+                          onClick={() => markReturned(p.id)}
+                          disabled={actionLoadingId === p.id}
+                          style={{
+                            minHeight: 46,
+                            padding: '0 14px',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                          title="Record Re-In entry"
+                        >
+                          <LogIn size={15} /> Re-In
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Secondary Actions: View Pass & Verify */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingTop: 2 }}>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setSelectedPass(p)}
+                      style={{
+                        minHeight: 38,
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 5,
+                        fontWeight: 700,
+                        background: '#f8fafc'
+                      }}
+                    >
+                      <Eye size={15} /> View Pass & QR
+                    </button>
+
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => verify(p.passNumber)}
+                      style={{
+                        minHeight: 38,
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 5,
+                        fontWeight: 700,
+                        color: 'var(--blue-700)',
+                        borderColor: 'var(--blue-300)',
+                        background: '#eff6ff'
+                      }}
+                    >
+                      <Shield size={15} /> Verify
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
+          /* ========================================================
+             STRUCTURED TABLE VIEW (FOR DESKTOP / SPREADSHEET USERS)
+             ======================================================== */
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Pass ID</th><th>Employee</th><th>Department</th>
-                  <th>Exit Time</th><th>Expected Return</th><th>Status</th>
-                  <th>Actual Exit</th><th>Actual Return</th>
+                  <th>Pass ID</th>
+                  <th>Employee</th>
+                  <th>Department</th>
+                  <th>Exit Window</th>
+                  <th>Campus Status</th>
+                  <th>Actual Exit</th>
+                  <th>Actual Return</th>
+                  <th style={{ minWidth: 260 }}>Guard Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {passes.map((p: any) => (
-                  <tr key={p.id}>
-                    <td className="font-mono" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--blue-700)' }}>{p.passNumber}</td>
-                    <td>
-                      <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{p.employee?.firstName} {p.employee?.lastName}</div>
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)' }}>{p.employee?.employeeCode}</div>
-                    </td>
-                    <td style={{ fontSize: '0.8125rem' }}>{p.employee?.department?.name}</td>
-                    <td style={{ fontSize: '0.8125rem' }}>{p.exitRequest?.exitTime}</td>
-                    <td style={{ fontSize: '0.8125rem' }}>{p.exitRequest?.expectedReturnTime}</td>
-                    <td><span className={`badge ${statusBadgeClass(p.status)}`}>{statusLabel(p.status)}</span></td>
-                    <td style={{ fontSize: '0.75rem' }}>{p.gateLogs?.[0]?.actualExitTime ? fmtTime(p.gateLogs[0].actualExitTime) : '—'}</td>
-                    <td style={{ fontSize: '0.75rem' }}>{p.gateLogs?.[0]?.actualReturnTime ? fmtTime(p.gateLogs[0].actualReturnTime) : '—'}</td>
-                  </tr>
-                ))}
+                {filteredPasses.map((p: any) => {
+                  const mState = getPassMovementState(p);
+                  const latestLog = p.gateLogs?.[0];
+
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button
+                          onClick={() => verify(p.passNumber)}
+                          title="Click to Verify Pass in top scanner"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <span className="font-mono" style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--blue-700)', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+                            {p.passNumber}
+                          </span>
+                        </button>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{p.employee?.firstName} {p.employee?.lastName}</div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)' }}>{p.employee?.employeeCode}</div>
+                      </td>
+                      <td style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{p.employee?.department?.name || '—'}</td>
+                      <td style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--slate-700)' }}>
+                          {p.exitRequest?.exitTime || '—'} → {p.exitRequest?.expectedReturnTime || '—'}
+                        </div>
+                        {p.exitRequest?.destination && (
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--slate-400)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {p.exitRequest.destination}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {mState === 'OUTSIDE' && (
+                          <span className="badge badge-amber" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
+                            🟡 Outside (On Pass)
+                          </span>
+                        )}
+                        {mState === 'RETURNED' && (
+                          <span className="badge badge-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
+                            🔵 Returned (On Campus)
+                          </span>
+                        )}
+                        {mState === 'INSIDE' && (
+                          <span className="badge badge-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
+                            🟢 Inside (Ready)
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.75rem', color: latestLog?.actualExitTime ? 'var(--slate-800)' : 'var(--slate-400)', fontWeight: latestLog?.actualExitTime ? 600 : 400, whiteSpace: 'nowrap' }}>
+                        {latestLog?.actualExitTime ? fmtTime(latestLog.actualExitTime) : '—'}
+                      </td>
+                      <td style={{ fontSize: '0.75rem', color: latestLog?.actualReturnTime ? 'var(--slate-800)' : 'var(--slate-400)', fontWeight: latestLog?.actualReturnTime ? 600 : 400, whiteSpace: 'nowrap' }}>
+                        {latestLog?.actualReturnTime ? fmtTime(latestLog.actualReturnTime) : '—'}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setSelectedPass(p)}
+                            title="View Official Digital Gate Pass & QR Code"
+                            style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700 }}
+                          >
+                            <Eye size={14} /> View Pass
+                          </button>
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => verify(p.passNumber)}
+                            title="Load into Verify scanner"
+                            style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--blue-700)', borderColor: 'var(--blue-300)', fontWeight: 700 }}
+                          >
+                            <Shield size={14} /> Verify
+                          </button>
+                          {mState === 'INSIDE' && (
+                            <button
+                              className="btn btn-sm btn-success"
+                              onClick={() => allowExit(p.id)}
+                              disabled={actionLoadingId === p.id}
+                              style={{
+                                padding: '5px 11px',
+                                fontSize: '0.74rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                borderColor: '#16a34a',
+                                fontWeight: 800
+                              }}
+                              title="Allow Exit — Record Physical Departure"
+                            >
+                              {actionLoadingId === p.id ? <Spinner white size="sm" /> : <LogOut size={14} />}
+                              Allow Exit
+                            </button>
+                          )}
+                          {mState === 'OUTSIDE' && (
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => markReturned(p.id)}
+                              disabled={actionLoadingId === p.id}
+                              style={{
+                                padding: '5px 11px',
+                                fontSize: '0.74rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: '#d97706',
+                                color: '#ffffff',
+                                borderColor: '#d97706',
+                                fontWeight: 800
+                              }}
+                              title="Record Return (Re-In) / Physical Entry"
+                            >
+                              {actionLoadingId === p.id ? <Spinner white size="sm" /> : <LogIn size={14} />}
+                              Record Re-In
+                            </button>
+                          )}
+                          {mState === 'RETURNED' && (
+                            <>
+                              <button
+                                className="btn btn-sm btn-primary"
+                                onClick={() => allowReExit(p.id)}
+                                disabled={actionLoadingId === p.id}
+                                style={{
+                                  padding: '5px 11px',
+                                  fontSize: '0.74rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  color: '#ffffff',
+                                  background: '#2563eb',
+                                  borderColor: '#2563eb',
+                                  fontWeight: 800
+                                }}
+                                title="Allow employee to re-exit campus again"
+                              >
+                                {actionLoadingId === p.id ? <Spinner white size="sm" /> : <RotateCcw size={14} />}
+                                Re-Exit
+                              </button>
+                              <button
+                                className="btn btn-sm btn-ghost"
+                                onClick={() => markReturned(p.id)}
+                                disabled={actionLoadingId === p.id}
+                                style={{
+                                  padding: '5px 8px',
+                                  fontSize: '0.72rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                  color: '#b45309'
+                                }}
+                                title="Log Re-In Entry"
+                              >
+                                <LogIn size={12} /> Re-In
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* ========================================================
+          DIGITAL GATE PASS MODAL (VIEW & EXECUTE FOR SECURITY GUARD)
+          ======================================================== */}
+      {selectedPass && (() => {
+        const modalState = getPassMovementState(selectedPass);
+
+        return (
+          <Modal
+            open={!!selectedPass}
+            onClose={() => setSelectedPass(null)}
+            title={`Gate Pass: ${selectedPass.passNumber}`}
+            footer={
+              <div style={{ display: 'flex', gap: 8, width: '100%', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button className="btn btn-ghost" onClick={() => setSelectedPass(null)}>
+                  Close
+                </button>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {modalState === 'INSIDE' && (
+                    <button
+                      className="btn btn-success"
+                      onClick={() => allowExit(selectedPass.id)}
+                      disabled={actionLoadingId === selectedPass.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, background: '#16a34a', color: '#fff' }}
+                    >
+                      {actionLoadingId === selectedPass.id ? <Spinner white size="sm" /> : <LogOut size={16} />}
+                      Allow Exit (Record Departure)
+                    </button>
+                  )}
+
+                  {modalState === 'OUTSIDE' && (
+                    <button
+                      className="btn btn-warning"
+                      onClick={() => markReturned(selectedPass.id)}
+                      disabled={actionLoadingId === selectedPass.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#d97706', color: '#fff', fontWeight: 800 }}
+                    >
+                      {actionLoadingId === selectedPass.id ? <Spinner white size="sm" /> : <LogIn size={16} />}
+                      Record Re-In (Physical Entry)
+                    </button>
+                  )}
+
+                  {modalState === 'RETURNED' && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => allowReExit(selectedPass.id)}
+                        disabled={actionLoadingId === selectedPass.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#2563eb', color: '#fff', fontWeight: 800 }}
+                      >
+                        {actionLoadingId === selectedPass.id ? <Spinner white size="sm" /> : <RotateCcw size={16} />}
+                        Allow Re-Exit (Step Out Again)
+                      </button>
+                      <button
+                        className="btn btn-outline"
+                        onClick={() => markReturned(selectedPass.id)}
+                        disabled={actionLoadingId === selectedPass.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+                      >
+                        {actionLoadingId === selectedPass.id ? <Spinner size="sm" /> : <LogIn size={15} />}
+                        Record Re-In
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            }
+          >
+            <div style={{ padding: '6px 0' }}>
+              {/* Header Badge */}
+              <div style={{
+                background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
+                color: 'white',
+                borderRadius: 12,
+                padding: '16px 20px',
+                textAlign: 'center',
+                marginBottom: 16
+              }}>
+                <div style={{ fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#bfdbfe', fontWeight: 800 }}>
+                  SmartGate OS · Official Campus Pass
+                </div>
+                <h3 style={{ margin: '4px 0', fontSize: '1.35rem', fontWeight: 900, letterSpacing: '0.04em' }}>
+                  {selectedPass.passNumber}
+                </h3>
+                <div style={{ display: 'inline-block', background: 'rgba(255,255,255,0.25)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800, marginTop: 4 }}>
+                  {modalState === 'OUTSIDE' && '🟡 OUTSIDE ON PASS'}
+                  {modalState === 'RETURNED' && '🔵 RETURNED TO CAMPUS'}
+                  {modalState === 'INSIDE' && '🟢 INSIDE (READY FOR EXIT)'}
+                </div>
+              </div>
+
+              {/* QR Code and Employee Card - Responsive flex-wrap */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <div style={{
+                  flex: '0 0 auto',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 12,
+                  padding: 12,
+                  textAlign: 'center',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                }}>
+                  <QRCodeSVG
+                    value={selectedPass.passNumber || selectedPass.id}
+                    size={130}
+                    level="M"
+                    includeMargin={false}
+                  />
+                  <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: 5, fontWeight: 700 }}>Scan QR at Gate</div>
+                </div>
+
+                <div style={{ flex: '1 1 200px', minWidth: 190 }}>
+                  <h4 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                    {selectedPass.employee?.firstName} {selectedPass.employee?.lastName}
+                  </h4>
+                  <div style={{ fontSize: '0.82rem', color: '#2563eb', fontWeight: 700, marginBottom: 2 }}>
+                    Badge: {selectedPass.employee?.employeeCode}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {selectedPass.employee?.designation || 'Staff'} · {selectedPass.employee?.department?.name || 'Department'}
+                  </div>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>
+                      ✓ Manager Approved
+                    </span>
+                    {selectedPass.exitRequest?.requiresHrApproval && (
+                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>
+                        ✓ HR Approved
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Exit Window & Details */}
+              <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px 14px', fontSize: '0.82rem' }}>
+                  <div>
+                    <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.72rem' }}>Exit Window:</span>
+                    <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                      {selectedPass.exitRequest?.exitTime} → {selectedPass.exitRequest?.expectedReturnTime}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.72rem' }}>Destination:</span>
+                    <span style={{ color: '#334155', fontWeight: 600 }}>{selectedPass.exitRequest?.destination || 'Local Business'}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.72rem' }}>Reason:</span>
+                    <span style={{ color: '#334155' }}>{selectedPass.exitRequest?.reason || 'Exit Permission'}</span>
+                  </div>
+
+                  {selectedPass.gateLogs?.[0]?.actualExitTime && (
+                    <div>
+                      <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.72rem' }}>Actual Exit:</span>
+                      <span style={{ fontWeight: 700, color: '#16a34a' }}>
+                        {fmtTime(selectedPass.gateLogs[0].actualExitTime)}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedPass.gateLogs?.[0]?.actualReturnTime && (
+                    <div>
+                      <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.72rem' }}>Actual Return:</span>
+                      <span style={{ fontWeight: 700, color: '#2563eb' }}>
+                        {fmtTime(selectedPass.gateLogs[0].actualReturnTime)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Gate Movement History */}
+              {selectedPass.gateLogs && selectedPass.gateLogs.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>
+                    Gate Movement Timeline ({selectedPass.gateLogs.length} events):
+                  </div>
+                  <div style={{ maxHeight: 130, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, background: '#ffffff' }}>
+                    {selectedPass.gateLogs.map((log: any, idx: number) => (
+                      <div key={log.id || idx} style={{ padding: '7px 12px', borderBottom: idx < selectedPass.gateLogs.length - 1 ? '1px solid #f1f5f9' : 'none', fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <strong>Exit:</strong> {log.actualExitTime ? fmtTime(log.actualExitTime) : '—'}
+                          {log.notes && <span style={{ color: '#64748b', marginLeft: 6 }}>({log.notes})</span>}
+                        </div>
+                        <div style={{ color: log.actualReturnTime ? '#2563eb' : '#d97706', fontWeight: 700 }}>
+                          <strong>Return:</strong> {log.actualReturnTime ? fmtTime(log.actualReturnTime) : 'Pending Re-In'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
